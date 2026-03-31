@@ -309,9 +309,9 @@ async function handleMessage(text, chatId = null) {
     }
 
     // معالجة الأزرار النصية التي كانت Inline سابقاً
-    if (input.startsWith('⚙️ صلاحيات ')) {
+    if (input.includes('👤') && input.includes('(') && input.includes(')')) {
         const id = input.match(/\(([^)]+)\)/)?.[1];
-        if (id) return handleCallback(`edit_perms:${id}`, chatId);
+        if (id && isAdmin(id)) return handleCallback(`edit_perms:${id}`, chatId);
     }
     if (input.startsWith('🗑️ حذف أدمن ')) {
         const id = input.match(/\(([^)]+)\)/)?.[1];
@@ -804,9 +804,9 @@ async function handleCallback(data, chatId = null) {
         for (const id of ids) {
             let name = null;
             const res = await tg('getChat', { chat_id: id });
-            if (res.ok) name = res.result.first_name;
+            if (res.ok) name = res.result.first_name || res.result.username;
             msg += `• 👤 <b>${name || id}</b> (<code>${id}</code>)\n`;
-            kb.push([{ text: `⚙️ صلاحيات (${id})` }]);
+            kb.push([{ text: `👤 ${name || 'أدمن'} (${id})` }]);
         }
         if (ids.length > 0) kb.push([{ text: '🧨 تصفير جميع الأدمنية' }]);
         kb.push([{ text: '🔙 رجوع' }]);
