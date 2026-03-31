@@ -1021,12 +1021,18 @@ async function handleCallback(data, chatId = null) {
         
         const expiry = user.expiry_date ? new Date(user.expiry_date).toLocaleDateString() : 'غير محدد';
         const msg = `${icon} <b>بيانات الطالب:</b>\n👤 اليوزر: <code>${user.username}</code>\n🔑 الباسورد: <code>${user.password || 'غير محدد'}</code>\n📊 الحالة: ${isExpired ? '<b>منتهي (🔴)</b>' : (user.status === 'active' ? 'نشط (🟢)' : (user.status === 'pending' ? 'معلق (❓)' : 'محظور (🚫)'))}\n📅 الانتهاء: ${expiry}`;
+        
         const kb = [
-            [{ text: isExpired ? '🔓 تفعيل/تجديد الاشتراك' : '⏳ تغيير مدة الاشتراك' }, { text: '🔑 تغيير كلمة المرور' }],
-            [{ text: user.status === 'banned' ? '✅ رفع الحظر' : '🚫 حظر الطالب' }, { text: '🗑️ حذف الطالب' }],
+            [{ text: isExpired ? '🔓 تفعيل/تجديد الاشتراك' : '⏳ تغيير مدة الاشتراك', callback_data: `edit_user_dur:${id}` }, { text: '🔑 تغيير كلمة المرور', callback_data: `edit_user_pass:${id}` }],
+            [{ text: user.status === 'banned' ? '✅ رفع الحظر' : '🚫 حظر الطالب', callback_data: `tog_ban:${id}` }, { text: '🗑️ حذف الطالب', callback_data: `conf_del_user:${id}` }],
             [{ text: '🔙 رجوع' }]
         ];
         return sendMsg(msg, null, kb, cid);
+    }
+    if (data.startsWith('conf_del_user:')) {
+        const id = data.split(':')[1];
+        await saveState(cid, { targetId: id, action: 'conf_del_user' });
+        return sendMsg("❓ <b>هل أنت متأكد من حذف هذا الطالب نهائياً؟</b>", null, [[{ text: '⚠️ نعم، احذف الطالب' }, { text: '🔙 رجوع' }]], cid);
     }
     if (data.startsWith('del_user:')) {
         const id = data.split(':')[1];
@@ -1034,18 +1040,20 @@ async function handleCallback(data, chatId = null) {
         await clearState(cid);
         
         if (error) {
-            // Fallback to soft delete if constraints block standard deletion
-            const { error: softErr } = await supabase.from('users').update({
+            // Fallback: If permanent deletion fails (due to database constraints/history), 
+            // we perform a "soft delete" by clearing credentials and hiding the user.
+            const softDeletedName = `deleted_${Date.now()}_${id}`;
+            const { error: updateErr } = await supabase.from('users').update({
                 status: 'banned',
-                username: `deleted_${Date.now()}_${id}`,
-                password: '',
-                telegram_id: null
+                username: softDeletedName,
+                password: '', // Clear password
+                telegram_id: null // Unlink telegram
             }).eq('id', id);
-            
-            if (softErr) {
-                return sendMsg(`❌ حدث خطأ أثناء الحذف والتعطيل: ${error.message}`, null, null, cid);
+
+            if (updateErr) {
+                return sendMsg(`❌ فشل الحذف التام والتعطيل: ${updateErr.message}`, null, null, cid);
             }
-            return sendMsg(`✅ تم تعطيل حساب الطالب وحذف بيانات دخوله (لحماية بيانات الدروس القديمة له).`, null, null, cid);
+            return sendMsg(`✅ تم تعطيل حساب الطالب وتفريغ بياناته بنجاح.\n(تم الاحتفاظ بالسجل فارغاً لوجود عمليات سابقة مرتبطة به).`, null, null, cid);
         }
         
         return sendMsg(`✅ تم حذف الطالب نهائياً من قاعدة البيانات.`, null, null, cid);
@@ -1137,6 +1145,28 @@ async function handleCallback(data, chatId = null) {
         const userId = data.split(':')[1];
         await saveState(cid, { targetId: userId, action: 'replying_user' });
         return sendMsg(`✍️ أرسل رسالة الرد للمستخدم (ID: <code>${userId}</code>):`, null, [[{ text: '🔙 العودة للقائمة الرئيسية' }]], cid);
+    }
+
+    // --- Student Actions Callbacks ---
+    if (data.startsWith('edit_user_pass:')) {
+        const id = data.split(':')[1];
+        await saveState(cid, { targetId: id, action: 'edit_user_pass_final' });
+        return sendMsg("🔑 أرسل <b>كلمة المرور الجديدة</b> للطالب:", null, [[{ text: '🔙 رجوع' }]], cid);
+    }
+    if (data.startsWith('edit_user_dur:')) {
+        const id = data.split(':')[1];
+        await saveState(cid, { targetId: id, action: 'edit_user_dur_final' });
+        const ik = [[{ text: '🕒 ساعة' }, { text: '📅 يوم' }], [{ text: '📅 30 يوم' }, { text: '📅 سنة' }]];
+        return sendMsg("⏳ أرسل <b>المدة الجديدة</b> (أيام) أو اختر:", ik, [[{ text: '🔙 رجوع' }]], cid);
+    }
+    if (data.startsWith('tog_ban:')) {
+        const id = data.split(':')[1];
+        const { data: user } = await supabase.from('users').select('status').eq('id', id).single();
+        if (!user) return sendMsg("❌ الطالب غير موجود.");
+        const newStatus = user.status === 'banned' ? 'active' : 'banned';
+        await supabase.from('users').update({ status: newStatus }).eq('id', id);
+        await sendMsg(`✅ تم ${newStatus === 'banned' ? 'حظر' : 'تفعيل'} الطالب بنجاح.`, null, null, cid);
+        return handleCallback(`student_info:${id}`, cid);
     }
 }
 
