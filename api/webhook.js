@@ -370,11 +370,19 @@ async function handleMessage(text, chatId = null) {
             return sendLessonsList(state.last_lesson_page, chatId);
         }
 
+        if (action === 'editing_perms' || action === 'add_admin_id') {
+            return handleCallback('list_admins', chatId);
+        }
+        if (action === 'list_admins') {
+            return handleCallback('admin_settings', chatId);
+        }
+        if (action === 'admin_settings') {
+            await clearState(chatId);
+            return sendMsg("🏠 القائمة الرئيسية", null, mainKb(chatId), chatId);
+        }
+        
         if (action.includes('coupon') || action.includes('code')) {
             return handleCallback('manage_codes', chatId);
-        }
-        if (action.includes('perms') || action === 'add_admin_id' || action.includes('admin')) {
-            return handleCallback('list_admins', chatId);
         }
         
         await clearState(chatId);
@@ -779,6 +787,7 @@ async function handleCallback(data, chatId = null) {
 
     // --- إعدادات الإدارة (أدمنز وصلاحيات) ---
     if (data === 'admin_settings') {
+        await saveState(cid, { action: 'admin_settings' });
         const kb = [[{ text: '➕ إضافة أدمن جديد' }], [{ text: '📋 التحكم في الصلاحيات' }], [{ text: '🔙 العودة للقائمة الرئيسية' }]];
         return sendMsg("⚙️ <b>إعدادات الإدارة:</b>\nتحكم في المسؤولين وصلاحياتهم.", null, kb, cid);
     }
@@ -787,6 +796,7 @@ async function handleCallback(data, chatId = null) {
         return sendMsg("👤 أرسل <b>Telegram ID</b> للأدمن الجديد:", null, [[{ text: '🔙 رجوع' }]], cid);
     }
     if (data === 'list_admins') {
+        await saveState(cid, { action: 'list_admins' });
         const permsMap = await fetchAdmins();
         const ids = Object.keys(permsMap).filter(id => id !== SUPER_ADMIN);
         let msg = "📋 <b>إدارة الأدمنز:</b>\n\n👑 <b>أنت (Super Admin)</b>\n\n";
@@ -870,10 +880,7 @@ async function handleCallback(data, chatId = null) {
         const pending = std.filter(u => u.status === 'pending' && (!u.expiry_date || new Date(u.expiry_date) > now)).length;
         const expired = std.filter(u => ['active', 'pending'].includes(u.status) && u.expiry_date && new Date(u.expiry_date) <= now).length;
         
-        const expiredCount = expired;
-        const kb = expiredCount > 0 ? [[{ text: '⏳ عرض الطلاب المنتهيين' }], [{ text: '🔙 العودة للقائمة الرئيسية' }]] : [[{ text: '🔙 العودة للقائمة الرئيسية' }]];
-        
-        return sendMsg(`📊 <b>إحصائيات:</b>\n👥 إجمالي: ${std.length}\n🟢 نشطون: ${active}\n❓ بانتظار التفعيل: ${pending}\n⏳ منتهية: ${expiredCount}\n🔴 محظورون: ${std.filter(u => u.status === 'banned').length}\n🌐 الان: ${online}\n📚 دروس: ${lessons?.length || 0}\n🎫 أكواد: ${coupons?.length || 0}`, null, kb, cid);
+        return sendMsg(`📊 <b>إحصائيات:</b>\n👥 إجمالي: ${std.length}\n🟢 نشطون: ${active}\n❓ بانتظار التفعيل: ${pending}\n⏳ منتهية: ${expired}\n🔴 محظورون: ${std.filter(u => u.status === 'banned').length}\n🌐 الان: ${online}\n📚 دروس: ${lessons?.length || 0}\n🎫 أكواد: ${coupons?.length || 0}`, null, null, cid);
     }
     if (data === 'list_expired') {
         const { data: users } = await supabase.from('users').select('*');
