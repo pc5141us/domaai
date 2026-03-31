@@ -383,6 +383,10 @@ async function handleMessage(text, chatId = null) {
         if (action === 'list_admins') {
             return handleCallback('admin_settings', chatId);
         }
+        if (action.startsWith('site_ann')) {
+            await clearState(chatId);
+            return handleCallback('site_announcement', chatId);
+        }
         if (action === 'admin_settings') {
             await clearState(chatId);
             return sendMsg("🏠 القائمة الرئيسية", null, mainKb(chatId), chatId);
@@ -500,6 +504,18 @@ async function handleMessage(text, chatId = null) {
     if (input === '📢 إعلان الموقع') return handleCallback('site_announcement', chatId);
     if (input === '➕ إضافة درس') return handleCallback('add_lesson', chatId);
     if (input === '📢 إذاعة إعلان') return handleCallback('start_broadcast', chatId);
+    
+    if (input === '📝 تعديل إعلان الموقع') {
+        await saveState(chatId, { action: 'site_ann_text' });
+        return sendMsg("📢 أرسل <b>نص الإعلان</b> الجديد المكتوب في شريط الموقع:", null, [[{ text: '🔙 العودة للقائمة الرئيسية' }]], chatId);
+    }
+    if (input === '🗑️ حذف إعلان الموقع') {
+        const announceObj = { text: '', buttonText: '', buttonUrl: '' };
+        await updateSiteAnnouncement(announceObj);
+        await clearState(chatId);
+        return sendMsg("✅ تم حذف إعلان الموقع بنجاح.", null, null, chatId);
+    }
+
     if (input === '🔍 بحث عن طالب') return handleCallback('search_student', chatId);
     if (input === '🔍 بحث عن درس') return handleCallback('search_lesson', chatId);
     if (input === '🎫 توليد الأكواد') return sendMsg('🎫 <b>اختر مدة الكود:</b>', null, codesKb, chatId);
@@ -805,33 +821,21 @@ async function handleCallback(data, chatId = null) {
     if (data === 'list_admins') {
         await saveState(cid, { action: 'list_admins' });
         const permsMap = await fetchAdmins();
-        const ids = Object.keys(permsMap).filter(id => id !== SUPER_ADMIN);
         const config = await getBotConfig();
         const names = config.names || {};
         
-        let superName = names[SUPER_ADMIN?.toString()];
-        if (!superName) {
-            const res = await tg('getChat', { chat_id: parseInt(SUPER_ADMIN) });
-            if (res.ok) superName = res.result.first_name || res.result.username;
-        }
+        const ids = Object.keys(permsMap).filter(id => id !== SUPER_ADMIN);
+        const superName = names[SUPER_ADMIN?.toString()] || 'مالك المنصة';
         
-        let msg = `📋 <b>إدارة الأدمنز:</b>\n\n👑 <b>أنت:</b> ${superName || 'مالك المنصة'} (<code>${SUPER_ADMIN}</code>)\n\n`;
+        let msg = `📋 <b>إدارة الأدمنز:</b>\n\n👑 <b>أنت:</b> ${superName} (<code>${SUPER_ADMIN}</code>)\n\n`;
         const kb = [];
         
-        // Fetch all names in parallel
-        const adminRows = await Promise.all(ids.map(async (id) => {
-            let name = names[id.toString()];
-            if (!name) {
-                const res = await tg('getChat', { chat_id: parseInt(id) });
-                if (res.ok) name = res.result.first_name || res.result.username;
-            }
-            return { id, name: name || id };
-        }));
+        ids.forEach(id => {
+            const name = names[id.toString()] || id;
+            msg += `• 👤 <b>${name}</b> (<code>${id}</code>)\n`;
+            kb.push([{ text: `👤 ${name} (${id})` }]);
+        });
 
-        for (const admin of adminRows) {
-            msg += `• 👤 <b>${admin.name}</b> (<code>${admin.id}</code>)\n`;
-            kb.push([{ text: `👤 ${admin.name} (${admin.id})` }]);
-        }
         if (ids.length > 0) kb.push([{ text: '🧨 تصفير جميع الأدمنية' }]);
         kb.push([{ text: '🔙 رجوع' }]);
         return sendMsg(msg, null, kb, cid);
