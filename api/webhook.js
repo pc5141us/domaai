@@ -872,10 +872,20 @@ async function handleCallback(data, chatId = null) {
         await saveState(cid, { action: 'editing_perms', targetId: id });
         let msg = `⚙️ <b>صلاحيات الأدمن:</b> (<code>${id}</code>)\nاختر الصلاحية لتبديل حالتها:`;
         const kb = [];
-        Object.keys(PERMISSIONS_MAP).forEach(pk => {
-            const has = perms.includes(pk);
-            kb.push([{ text: `${has ? '✅' : '❌'} ${PERMISSIONS_MAP[pk]}` }]);
-        });
+        
+        const keys = Object.keys(PERMISSIONS_MAP);
+        for (let i = 0; i < keys.length; i += 2) {
+            const row = [];
+            const pk1 = keys[i];
+            row.push({ text: `${perms.includes(pk1) ? '✅' : '❌'} ${PERMISSIONS_MAP[pk1]}` });
+            
+            if (i + 1 < keys.length) {
+                const pk2 = keys[i + 1];
+                row.push({ text: `${perms.includes(pk2) ? '✅' : '❌'} ${PERMISSIONS_MAP[pk2]}` });
+            }
+            kb.push(row);
+        }
+        
         kb.push([{ text: '🗑️ حذف هذا الأدمن' }, { text: '🔙 رجوع' }]);
         return sendMsg(msg, null, kb, cid);
     }
@@ -885,18 +895,19 @@ async function handleCallback(data, chatId = null) {
         const pk = parts[2];
         const perms = CACHED_ADMINS_PERMS[id] || [];
         CACHED_ADMINS_PERMS[id] = perms.includes(pk) ? perms.filter(x => x !== pk) : [...perms, pk];
-        await saveAdmins(CACHED_ADMINS_PERMS);
+        
+        saveAdmins(CACHED_ADMINS_PERMS).catch(e => console.error(e));
+        
         const status = CACHED_ADMINS_PERMS[id].includes(pk) ? '✅ تم تفعيل' : '❌ تم تعطيل';
-        await tg('sendMessage', { chat_id: cid, text: `🔹 <b>تحديث:</b> ${status} صلاحية (<b>${PERMISSIONS_MAP[pk]}</b>) للأدمن بنجاح.`, parse_mode: 'HTML' });
         
         // Push update to the target admin if different from sender
         if (id !== cid.toString()) {
-            await tg('sendMessage', { 
+            tg('sendMessage', { 
                 chat_id: id, 
                 text: `🔄 <b>تحديث صلاحيات:</b> تم ${status} صلاحية (<b>${PERMISSIONS_MAP[pk]}</b>) لك من قبل المسؤول. تم تحديث أزرار التحكم تلقائياً.`, 
                 parse_mode: 'HTML',
                 reply_markup: { keyboard: mainKb(id), resize_keyboard: true }
-            });
+            }).catch(e => console.error(e));
         }
         
         return handleCallback(`edit_perms:${id}`, cid);
@@ -929,7 +940,7 @@ async function handleCallback(data, chatId = null) {
     if (data === 'stats') {
         const [{ data: users }, { data: lessons }, { data: coupons }] = await Promise.all([supabase.from('users').select('*'), supabase.from('lessons').select('id'), supabase.from('coupons').select('id')]);
         const systemUsers = ['admin', 'ANNOUNCEMENT_DATA', 'ADMIN_CONFIG_LIST_V2', 'STATE', 'BOT_STATE_ADMIN'];
-        const std = (users || []).filter(u => u.role !== 'admin' && !systemUsers.includes(u.username) && !u.username.startsWith('DOMA_AI_'));
+        const std = (users || []).filter(u => u.role !== 'admin' && !systemUsers.includes(u.username) && !u.username.startsWith('DOMA_AI_') && !u.username.startsWith('deleted_'));
         const now = Date.now();
         const online = std.filter(u => u.last_active && (now - new Date(u.last_active).getTime() < 180000)).length;
         const active = std.filter(u => u.status === 'active' && (!u.expiry_date || new Date(u.expiry_date) > now)).length;
@@ -1018,9 +1029,26 @@ async function handleCallback(data, chatId = null) {
         return sendMsg(msg, null, kb, cid);
     }
     if (data.startsWith('del_user:')) {
-        await supabase.from('users').delete().eq('id', data.split(':')[1]);
+        const id = data.split(':')[1];
+        const { error } = await supabase.from('users').delete().eq('id', id);
         await clearState(cid);
-        return sendMsg(`✅ تم حذف الطالب بنجاح.`, null, null, cid);
+        
+        if (error) {
+            // Fallback to soft delete if constraints block standard deletion
+            const { error: softErr } = await supabase.from('users').update({
+                status: 'banned',
+                username: `deleted_${Date.now()}_${id}`,
+                password: '',
+                telegram_id: null
+            }).eq('id', id);
+            
+            if (softErr) {
+                return sendMsg(`❌ حدث خطأ أثناء الحذف والتعطيل: ${error.message}`, null, null, cid);
+            }
+            return sendMsg(`✅ تم تعطيل حساب الطالب وحذف بيانات دخوله (لحماية بيانات الدروس القديمة له).`, null, null, cid);
+        }
+        
+        return sendMsg(`✅ تم حذف الطالب نهائياً من قاعدة البيانات.`, null, null, cid);
     }
 
     // 4. إدارة الدروس
@@ -1118,7 +1146,7 @@ async function sendStudentsList(page, chatId = null) {
     const { data: users } = await supabase.from('users').select('*');
     const systemUsers = ['admin', 'ANNOUNCEMENT_DATA', 'ADMIN_CONFIG_LIST_V2', 'STATE', 'BOT_STATE_ADMIN'];
     // فلترة المديرين وأيضاً سجلات النظام لضمان قائمة نظيفة
-    const stds = (users || []).filter(u => u.role !== 'admin' && !systemUsers.includes(u.username) && !u.username.startsWith('DOMA_AI_')).sort((a, b) => b.id - a.id);
+    const stds = (users || []).filter(u => u.role !== 'admin' && !systemUsers.includes(u.username) && !u.username.startsWith('DOMA_AI_') && !u.username.startsWith('deleted_')).sort((a, b) => b.id - a.id);
     const pageSize = 15;
     const totalPages = Math.max(1, Math.ceil(stds.length / pageSize));
     const slice = stds.slice(page * pageSize, (page * pageSize) + pageSize);
