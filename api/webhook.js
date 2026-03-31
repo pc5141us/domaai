@@ -210,12 +210,19 @@ export default async function handler(req, res) {
                 // Tracking all users for broadcast (only private chats)
                 const config = await getBotConfig();
                 if (!config.all_users) config.all_users = [];
+                if (!config.names) config.names = {};
+                
+                // Always update the name from interaction
+                const name = chat.first_name || chat.username || 'مجهول';
+                config.names[chat.id.toString()] = name;
+
                 if (chat.type === 'private' && !config.all_users.includes(chat.id)) {
                     config.all_users.push(chat.id);
                     await saveBotConfig(config);
                     // Notify admins on join
-                    const uname = chat.first_name || 'مستخدم جديد';
-                    await notifyAdmins(`🔔 <b>مستخدم جديد انضم للبوت!</b>\n👤 الاسم: <b>${uname}</b>\n🆔 المعرف: <code>${chat.id}</code>`);
+                    await notifyAdmins(`🔔 <b>مستخدم جديد انضم للبوت!</b>\n👤 الاسم: <b>${name}</b>\n🆔 المعرف: <code>${chat.id}</code>`);
+                } else if (config.names[chat.id.toString()] !== name) {
+                    await saveBotConfig(config);
                 }
 
                 if (isAdmin(chat.id)) {
@@ -801,10 +808,15 @@ async function handleCallback(data, chatId = null) {
         const ids = Object.keys(permsMap).filter(id => id !== SUPER_ADMIN);
         let msg = "📋 <b>إدارة الأدمنز:</b>\n\n👑 <b>أنت (Super Admin)</b>\n\n";
         const kb = [];
+        const config = await getBotConfig();
+        const names = config.names || {};
+        
         for (const id of ids) {
-            let name = null;
-            const res = await tg('getChat', { chat_id: id });
-            if (res.ok) name = res.result.first_name || res.result.username;
+            let name = names[id.toString()];
+            if (!name) {
+                const res = await tg('getChat', { chat_id: id });
+                if (res.ok) name = res.result.first_name || res.result.username;
+            }
             msg += `• 👤 <b>${name || id}</b> (<code>${id}</code>)\n`;
             kb.push([{ text: `👤 ${name || 'أدمن'} (${id})` }]);
         }
