@@ -23,15 +23,44 @@ let CACHED_ADMINS_PERMS = {}; // { ID: [perms] }
 async function getBotConfig() {
     try {
         const { data } = await supabase.from('users').select('password').eq('username', 'DOMA_AI_BOT').single();
-        return data && data.password ? JSON.parse(data.password) : { admins: {}, announcement: {}, all_users: [] };
-    } catch (e) { return { admins: {}, announcement: {}, all_users: [] }; }
+        const config = data && data.password ? JSON.parse(data.password) : { admins: {}, announcement: {}, all_users: [], names: {} };
+        if (!config.names) config.names = {};
+        if (!config.all_users) config.all_users = [];
+        return config;
+    } catch (e) { return { admins: {}, announcement: {}, all_users: [], names: {} }; }
 }
 
 async function saveBotConfig(config) {
     const jsonStr = JSON.stringify(config);
-    const { data } = await supabase.from('users').select('id').eq('username', 'DOMA_AI_BOT').single();
+    const { data } = await supabase.from('users').select('id').eq('id', (await supabase.from('users').select('id').eq('username', 'DOMA_AI_BOT').single()).data?.id);
     if (data) await supabase.from('users').update({ password: jsonStr }).eq('id', data.id);
     else await supabase.from('users').insert([{ username: 'DOMA_AI_BOT', password: jsonStr, role: 'system', status: 'active' }]);
+}
+
+async function trackUser(from) {
+    if (!from || !from.id) return;
+    const config = await getBotConfig();
+    const name = from.first_name || from.username || 'مجهول';
+    const cid = from.id.toString();
+    
+    let changed = false;
+    if (!config.names[cid] || config.names[cid] !== name) {
+        config.names[cid] = name;
+        changed = true;
+    }
+    
+    // Tracking for broadcast
+    if (!config.all_users.includes(from.id)) {
+        config.all_users.push(from.id);
+        changed = true;
+        await notifyAdmins(`🔔 <b>مستخدم جديد انضم للبوت!</b>\n👤 الاسم: <b>${name}</b>\n🆔 المعرف: <code>${from.id}</code>`);
+    }
+
+    if (changed) {
+        const jsonStr = JSON.stringify(config);
+        const { data } = await supabase.from('users').select('id').eq('username', 'DOMA_AI_BOT').single();
+        if (data) await supabase.from('users').update({ password: jsonStr }).eq('id', data.id);
+    }
 }
 
 async function fetchAdmins() {
@@ -207,24 +236,8 @@ export default async function handler(req, res) {
             const chat = body.message.chat;
             const text = body.message.text;
             if (chat && text) {
-                // Tracking all users for broadcast (only private chats)
-                const config = await getBotConfig();
-                if (!config.all_users) config.all_users = [];
-                if (!config.names) config.names = {};
+                await trackUser(chat);
                 
-                // Always update the name from interaction
-                const name = chat.first_name || chat.username || 'مجهول';
-                config.names[chat.id.toString()] = name;
-
-                if (chat.type === 'private' && !config.all_users.includes(chat.id)) {
-                    config.all_users.push(chat.id);
-                    await saveBotConfig(config);
-                    // Notify admins on join
-                    await notifyAdmins(`🔔 <b>مستخدم جديد انضم للبوت!</b>\n👤 الاسم: <b>${name}</b>\n🆔 المعرف: <code>${chat.id}</code>`);
-                } else if (config.names[chat.id.toString()] !== name) {
-                    await saveBotConfig(config);
-                }
-
                 if (isAdmin(chat.id)) {
                     await handleMessage(text, chat.id);
                 } else {
@@ -233,18 +246,7 @@ export default async function handler(req, res) {
             }
         } else if (body.callback_query) {
             const { from, data, message } = body.callback_query;
-            const chatId = message ? message.chat.id : from.id;
-
-            // Tracking all users for broadcast
-            const config = await getBotConfig();
-            if (!config.all_users) config.all_users = [];
-            if (!config.all_users.includes(from.id)) {
-                config.all_users.push(from.id);
-                await saveBotConfig(config);
-                // Notify admins on join (callback)
-                const uname = from.first_name || 'مستخدم جديد';
-                await notifyAdmins(`🔔 <b>مستخدم جديد انضم للبوت!</b>\n👤 الاسم: <b>${uname}</b>\n🆔 المعرف: <code>${from.id}</code>`);
-            }
+            await trackUser(from);
 
             if (isAdmin(from.id)) {
                 await tg('answerCallbackQuery', { callback_query_id: body.callback_query.id });
