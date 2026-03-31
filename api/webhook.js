@@ -23,44 +23,15 @@ let CACHED_ADMINS_PERMS = {}; // { ID: [perms] }
 async function getBotConfig() {
     try {
         const { data } = await supabase.from('users').select('password').eq('username', 'DOMA_AI_BOT').single();
-        const config = data && data.password ? JSON.parse(data.password) : { admins: {}, announcement: {}, all_users: [], names: {} };
-        if (!config.names) config.names = {};
-        if (!config.all_users) config.all_users = [];
-        return config;
-    } catch (e) { return { admins: {}, announcement: {}, all_users: [], names: {} }; }
+        return data && data.password ? JSON.parse(data.password) : { admins: {}, announcement: {}, all_users: [] };
+    } catch (e) { return { admins: {}, announcement: {}, all_users: [] }; }
 }
 
 async function saveBotConfig(config) {
     const jsonStr = JSON.stringify(config);
-    const { data } = await supabase.from('users').select('id').eq('id', (await supabase.from('users').select('id').eq('username', 'DOMA_AI_BOT').single()).data?.id);
+    const { data } = await supabase.from('users').select('id').eq('username', 'DOMA_AI_BOT').single();
     if (data) await supabase.from('users').update({ password: jsonStr }).eq('id', data.id);
     else await supabase.from('users').insert([{ username: 'DOMA_AI_BOT', password: jsonStr, role: 'system', status: 'active' }]);
-}
-
-async function trackUser(from) {
-    if (!from || !from.id) return;
-    const config = await getBotConfig();
-    const name = from.first_name || from.username || 'مجهول';
-    const cid = from.id.toString();
-    
-    let changed = false;
-    if (!config.names[cid] || config.names[cid] !== name) {
-        config.names[cid] = name;
-        changed = true;
-    }
-    
-    // Tracking for broadcast
-    if (!config.all_users.includes(from.id)) {
-        config.all_users.push(from.id);
-        changed = true;
-        await notifyAdmins(`🔔 <b>مستخدم جديد انضم للبوت!</b>\n👤 الاسم: <b>${name}</b>\n🆔 المعرف: <code>${from.id}</code>`);
-    }
-
-    if (changed) {
-        const jsonStr = JSON.stringify(config);
-        const { data } = await supabase.from('users').select('id').eq('username', 'DOMA_AI_BOT').single();
-        if (data) await supabase.from('users').update({ password: jsonStr }).eq('id', data.id);
-    }
 }
 
 async function fetchAdmins() {
@@ -158,12 +129,9 @@ const mainKb = (chatId) => {
     return kb;
 };
 
-function studentKb() {
-    return [[{ text: '✉️ تواصل مع الإدارة' }]];
-}
-
 async function sendStudentMenu(cid, text = "👋 أهلاً بك في بوت منصة Doma AI") {
-    return sendMsg(text, null, studentKb(), cid);
+    const kb = [[{ text: '✉️ تواصل مع الإدارة' }]];
+    return sendMsg(text, null, kb, cid);
 }
 
 async function sendAdminDashboard(cid) {
@@ -236,8 +204,17 @@ export default async function handler(req, res) {
             const chat = body.message.chat;
             const text = body.message.text;
             if (chat && text) {
-                await trackUser(chat);
-                
+                // Tracking all users for broadcast
+                const config = await getBotConfig();
+                if (!config.all_users) config.all_users = [];
+                if (!config.all_users.includes(chat.id)) {
+                    config.all_users.push(chat.id);
+                    await saveBotConfig(config);
+                    // Notify admins on join
+                    const uname = chat.first_name || 'مستخدم جديد';
+                    await notifyAdmins(`🔔 <b>مستخدم جديد انضم للبوت!</b>\n👤 الاسم: <b>${uname}</b>\n🆔 المعرف: <code>${chat.id}</code>`);
+                }
+
                 if (isAdmin(chat.id)) {
                     await handleMessage(text, chat.id);
                 } else {
@@ -246,7 +223,18 @@ export default async function handler(req, res) {
             }
         } else if (body.callback_query) {
             const { from, data, message } = body.callback_query;
-            await trackUser(from);
+            const chatId = message ? message.chat.id : from.id;
+
+            // Tracking all users for broadcast
+            const config = await getBotConfig();
+            if (!config.all_users) config.all_users = [];
+            if (!config.all_users.includes(from.id)) {
+                config.all_users.push(from.id);
+                await saveBotConfig(config);
+                // Notify admins on join (callback)
+                const uname = from.first_name || 'مستخدم جديد';
+                await notifyAdmins(`🔔 <b>مستخدم جديد انضم للبوت!</b>\n👤 الاسم: <b>${uname}</b>\n🆔 المعرف: <code>${from.id}</code>`);
+            }
 
             if (isAdmin(from.id)) {
                 await tg('answerCallbackQuery', { callback_query_id: body.callback_query.id });
@@ -263,11 +251,6 @@ export default async function handler(req, res) {
 async function handleStudentMessage(msg) {
     const text = msg.text?.trim();
     const chatId = msg.chat.id;
-    const chatType = msg.chat.type;
-
-    // Stop bot responses in groups and channels for students
-    if (chatType !== 'private') return;
-
     const state = await getState(chatId);
 
     if (text === '/start' || text === '🏠 القائمة الرئيسية' || text === '🔙 إلغاء') {
@@ -318,9 +301,9 @@ async function handleMessage(text, chatId = null) {
     }
 
     // معالجة الأزرار النصية التي كانت Inline سابقاً
-    if (input.includes('👤') && input.includes('(') && input.includes(')')) {
+    if (input.startsWith('⚙️ صلاحيات ')) {
         const id = input.match(/\(([^)]+)\)/)?.[1];
-        if (id && isAdmin(id)) return handleCallback(`edit_perms:${id}`, chatId);
+        if (id) return handleCallback(`edit_perms:${id}`, chatId);
     }
     if (input.startsWith('🗑️ حذف أدمن ')) {
         const id = input.match(/\(([^)]+)\)/)?.[1];
@@ -379,23 +362,11 @@ async function handleMessage(text, chatId = null) {
             return sendLessonsList(state.last_lesson_page, chatId);
         }
 
-        if (action === 'editing_perms' || action === 'add_admin_id') {
-            return handleCallback('list_admins', chatId);
-        }
-        if (action === 'list_admins') {
-            return handleCallback('admin_settings', chatId);
-        }
-        if (action.startsWith('site_ann')) {
-            await clearState(chatId);
-            return handleCallback('site_announcement', chatId);
-        }
-        if (action === 'admin_settings') {
-            await clearState(chatId);
-            return sendMsg("🏠 القائمة الرئيسية", null, mainKb(chatId), chatId);
-        }
-        
         if (action.includes('coupon') || action.includes('code')) {
             return handleCallback('manage_codes', chatId);
+        }
+        if (action.includes('perms') || action === 'add_admin_id' || action.includes('admin')) {
+            return handleCallback('list_admins', chatId);
         }
         
         await clearState(chatId);
@@ -506,18 +477,6 @@ async function handleMessage(text, chatId = null) {
     if (input === '📢 إعلان الموقع') return handleCallback('site_announcement', chatId);
     if (input === '➕ إضافة درس') return handleCallback('add_lesson', chatId);
     if (input === '📢 إذاعة إعلان') return handleCallback('start_broadcast', chatId);
-    
-    if (input === '📝 تعديل إعلان الموقع') {
-        await saveState(chatId, { action: 'site_ann_text' });
-        return sendMsg("📢 أرسل <b>نص الإعلان</b> الجديد المكتوب في شريط الموقع:", null, [[{ text: '🔙 العودة للقائمة الرئيسية' }]], chatId);
-    }
-    if (input === '🗑️ حذف إعلان الموقع') {
-        const announceObj = { text: '', buttonText: '', buttonUrl: '' };
-        await updateSiteAnnouncement(announceObj);
-        await clearState(chatId);
-        return sendMsg("✅ تم حذف إعلان الموقع بنجاح.", null, null, chatId);
-    }
-
     if (input === '🔍 بحث عن طالب') return handleCallback('search_student', chatId);
     if (input === '🔍 بحث عن درس') return handleCallback('search_lesson', chatId);
     if (input === '🎫 توليد الأكواد') return sendMsg('🎫 <b>اختر مدة الكود:</b>', null, codesKb, chatId);
@@ -812,7 +771,6 @@ async function handleCallback(data, chatId = null) {
 
     // --- إعدادات الإدارة (أدمنز وصلاحيات) ---
     if (data === 'admin_settings') {
-        await saveState(cid, { action: 'admin_settings' });
         const kb = [[{ text: '➕ إضافة أدمن جديد' }], [{ text: '📋 التحكم في الصلاحيات' }], [{ text: '🔙 العودة للقائمة الرئيسية' }]];
         return sendMsg("⚙️ <b>إعدادات الإدارة:</b>\nتحكم في المسؤولين وصلاحياتهم.", null, kb, cid);
     }
@@ -821,23 +779,17 @@ async function handleCallback(data, chatId = null) {
         return sendMsg("👤 أرسل <b>Telegram ID</b> للأدمن الجديد:", null, [[{ text: '🔙 رجوع' }]], cid);
     }
     if (data === 'list_admins') {
-        await saveState(cid, { action: 'list_admins' });
         const permsMap = await fetchAdmins();
-        const config = await getBotConfig();
-        const names = config.names || {};
-        
         const ids = Object.keys(permsMap).filter(id => id !== SUPER_ADMIN);
-        const superName = names[SUPER_ADMIN?.toString()] || 'مالك المنصة';
-        
-        let msg = `📋 <b>إدارة الأدمنز:</b>\n\n👑 <b>أنت:</b> ${superName} (<code>${SUPER_ADMIN}</code>)\n\n`;
+        let msg = "📋 <b>إدارة الأدمنز:</b>\n\n👑 <b>أنت (Super Admin)</b>\n\n";
         const kb = [];
-        
-        ids.forEach(id => {
-            const name = names[id.toString()] || id;
-            msg += `• 👤 <b>${name}</b> (<code>${id}</code>)\n`;
-            kb.push([{ text: `👤 ${name} (${id})` }]);
-        });
-
+        for (const id of ids) {
+            let name = null;
+            const res = await tg('getChat', { chat_id: id });
+            if (res.ok) name = res.result.first_name;
+            msg += `• 👤 <b>${name || id}</b> (<code>${id}</code>)\n`;
+            kb.push([{ text: `⚙️ صلاحيات (${id})` }]);
+        }
         if (ids.length > 0) kb.push([{ text: '🧨 تصفير جميع الأدمنية' }]);
         kb.push([{ text: '🔙 رجوع' }]);
         return sendMsg(msg, null, kb, cid);
@@ -856,25 +808,12 @@ async function handleCallback(data, chatId = null) {
         return sendMsg(msg, null, kb, cid);
     }
     if (data.startsWith('tog_perm:')) {
-        const parts = data.split(':');
-        const id = parts[1];
-        const pk = parts[2];
+        const [, id, pk] = data.split(':');
         const perms = CACHED_ADMINS_PERMS[id] || [];
         CACHED_ADMINS_PERMS[id] = perms.includes(pk) ? perms.filter(x => x !== pk) : [...perms, pk];
         await saveAdmins(CACHED_ADMINS_PERMS);
-        const status = CACHED_ADMINS_PERMS[id].includes(pk) ? '✅ تم تفعيل' : '❌ تم تعطيل';
+        const status = CACHED_ADMINS_PERMS[id].includes(pk) ? 'تم تفعيل' : 'تم تعطيل';
         await tg('sendMessage', { chat_id: cid, text: `🔹 <b>تحديث:</b> ${status} صلاحية (<b>${PERMISSIONS_MAP[pk]}</b>) للأدمن بنجاح.`, parse_mode: 'HTML' });
-        
-        // Push update to the target admin if different from sender
-        if (id !== cid.toString()) {
-            await tg('sendMessage', { 
-                chat_id: id, 
-                text: `🔄 <b>تحديث صلاحيات:</b> تم ${status} صلاحية (<b>${PERMISSIONS_MAP[pk]}</b>) لك من قبل المسؤول. تم تحديث أزرار التحكم تلقائياً.`, 
-                parse_mode: 'HTML',
-                reply_markup: { keyboard: mainKb(id), resize_keyboard: true }
-            });
-        }
-        
         return handleCallback(`edit_perms:${id}`, cid);
     }
     if (data.startsWith('conf_del_admin:')) {
@@ -889,14 +828,7 @@ async function handleCallback(data, chatId = null) {
         await saveAdmins(perms);
         await clearState(cid);
         await sendMsg(`✅ تم حذف الأدمن (<code>${id}</code>) وإلغاء صلاحياته.`, null, null, cid);
-        
-        // Notify the target that they are no longer an admin
-        return await tg('sendMessage', {
-            chat_id: id,
-            text: `⚠️ <b>تنبيه:</b> تم إلغاء صلاحياتك الإدارية من قبل المسؤول. تم العودة لقائمة الطالب.`,
-            parse_mode: 'HTML',
-            reply_markup: { keyboard: studentKb(), resize_keyboard: true }
-        });
+        return await sendStudentMenu(id, "⚠️ تم إلغاء صلاحياتك الإدارية من قبل المسؤول.");
     }
 
     // --- إحصائيات وبث ---
@@ -907,10 +839,10 @@ async function handleCallback(data, chatId = null) {
         const now = Date.now();
         const online = std.filter(u => u.last_active && (now - new Date(u.last_active).getTime() < 180000)).length;
         const active = std.filter(u => u.status === 'active' && (!u.expiry_date || new Date(u.expiry_date) > now)).length;
-        const pending = std.filter(u => u.status === 'pending' && (!u.expiry_date || new Date(u.expiry_date) > now)).length;
         const expired = std.filter(u => ['active', 'pending'].includes(u.status) && u.expiry_date && new Date(u.expiry_date) <= now).length;
-        
-        return sendMsg(`📊 <b>إحصائيات:</b>\n👥 إجمالي: ${std.length}\n🟢 نشطون: ${active}\n❓ بانتظار التفعيل: ${pending}\n⏳ منتهية: ${expired}\n🔴 محظورون: ${std.filter(u => u.status === 'banned').length}\n🌐 الان: ${online}\n📚 دروس: ${lessons?.length || 0}\n🎫 أكواد: ${coupons?.length || 0}`, null, null, cid);
+        const expiredCount = expired;
+        const kb = expiredCount > 0 ? [[{ text: '⏳ عرض الطلاب المنتهيين' }], [{ text: '🔙 العودة للقائمة الرئيسية' }]] : null;
+        return sendMsg(`📊 <b>إحصائيات:</b>\n👥 إجمالي: ${std.length}\n🟢 نشطون: ${active}\n⏳ منتهية: ${expiredCount}\n🔴 محظورون: ${std.filter(u => u.status === 'banned').length}\n🌐 الان: ${online}\n📚 دروس: ${lessons?.length || 0}\n🎫 أكواد: ${coupons?.length || 0}`, null, kb, cid);
     }
     if (data === 'list_expired') {
         const { data: users } = await supabase.from('users').select('*');
