@@ -806,19 +806,31 @@ async function handleCallback(data, chatId = null) {
         await saveState(cid, { action: 'list_admins' });
         const permsMap = await fetchAdmins();
         const ids = Object.keys(permsMap).filter(id => id !== SUPER_ADMIN);
-        let msg = "📋 <b>إدارة الأدمنز:</b>\n\n👑 <b>أنت (Super Admin)</b>\n\n";
-        const kb = [];
         const config = await getBotConfig();
         const names = config.names || {};
         
-        for (const id of ids) {
+        let superName = names[SUPER_ADMIN?.toString()];
+        if (!superName) {
+            const res = await tg('getChat', { chat_id: parseInt(SUPER_ADMIN) });
+            if (res.ok) superName = res.result.first_name || res.result.username;
+        }
+        
+        let msg = `📋 <b>إدارة الأدمنز:</b>\n\n👑 <b>أنت:</b> ${superName || 'مالك المنصة'} (<code>${SUPER_ADMIN}</code>)\n\n`;
+        const kb = [];
+        
+        // Fetch all names in parallel
+        const adminRows = await Promise.all(ids.map(async (id) => {
             let name = names[id.toString()];
             if (!name) {
-                const res = await tg('getChat', { chat_id: id });
+                const res = await tg('getChat', { chat_id: parseInt(id) });
                 if (res.ok) name = res.result.first_name || res.result.username;
             }
-            msg += `• 👤 <b>${name || id}</b> (<code>${id}</code>)\n`;
-            kb.push([{ text: `👤 ${name || 'أدمن'} (${id})` }]);
+            return { id, name: name || id };
+        }));
+
+        for (const admin of adminRows) {
+            msg += `• 👤 <b>${admin.name}</b> (<code>${admin.id}</code>)\n`;
+            kb.push([{ text: `👤 ${admin.name} (${admin.id})` }]);
         }
         if (ids.length > 0) kb.push([{ text: '🧨 تصفير جميع الأدمنية' }]);
         kb.push([{ text: '🔙 رجوع' }]);
