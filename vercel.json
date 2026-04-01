@@ -1,7 +1,14 @@
 {
-  "version": 2,
-  "rewrites": [
-    { "source": "/api/webhook", "destination": "/api/webhook.js" },
-    { "source": "/(.*)", "destination": "/$1" }
-  ]
+    "version": 2,
+    "cleanUrls": true,
+    "rewrites": [
+        {
+            "source": "/api/webhook",
+            "destination": "/api/webhook"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/$1"
+        }
+    ]
 }
