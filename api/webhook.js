@@ -8,7 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 const BOT_TOKEN = '8598472216:AAE7gQmUpaWPeEgq7ZFlnTGuzedGUAQfFoU';
 const SUPER_ADMIN = '682572594';
 const SUPABASE_URL = 'https://lakgdcsytownoiyrvliq.supabase.co';
-const SUPABASE_KEY = atob('c2JfcHVibGlzaGFibGVfT2IxUjF0Ql9TV3ctcDBWeUh6R3RKQV9mbjJCREthdQ==');
+const SUPABASE_KEY = 'sb_publishable_Ob1R1tB_SWw-p0VyHzGtJA_fn2BDKau';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const PERMISSIONS = {
