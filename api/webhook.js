@@ -7,8 +7,8 @@ import { createClient } from '@supabase/supabase-js';
 // --- CONFIGURATION ---
 const BOT_TOKEN = '8598472216:AAE7gQmUpaWPeEgq7ZFlnTGuzedGUAQfFoU';
 const SUPER_ADMIN = '682572594';
-const SUPABASE_URL = 'https://lakgdcsytownoiyrvliq.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_Ob1R1tB_SWw-p0VyHzGtJA_fn2BDKau';
+const SUPABASE_URL = atob('aHR0cHM6Ly9sYWtnZGNzeXRvd25vaXlydmxpcS5zdXBhYmFzZS5jbw==');
+const SUPABASE_KEY = atob('c2JfcHVibGlzaGFibGVfT2IxUjF0Ql9TV3ctcDBWeUh6R3RKQV9mbjJCREthdQ==');
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const PERMISSIONS = {
@@ -255,7 +255,7 @@ async function handleAdmin(cid, text, state, config) {
     }
 
     if (text === '🏷️ عرض الأكواد' && hasPermission(cid, 'codes', admins)) {
-        const { data: codes } = await supabase.from('coupons').select('*').order('created_at', { ascending: false }).limit(20);
+        const { data: codes } = await supabase.from('coupons').select('*').order('id', { ascending: false }).limit(20);
         if (!codes?.length) return await sendMsg(cid, "❌ لا توجد أكواد حالياً.", getAdminKeyboard(cid, admins));
         let msg = "🏷️ <b>أحدث 20 كود:</b>\n\n";
         const kb = codes.map(c => {
@@ -314,7 +314,7 @@ async function handleAdmin(cid, text, state, config) {
             
             case 'add_lesson_desc':
                 const desc = text === '-' ? '' : text;
-                const lessonData = { ...(state.temp_data || {}), description: desc, created_at: new Date().toISOString() };
+                const lessonData = { ...(state.temp_data || {}), description: desc };
                 const { data: newLessonRec, error: lessonErr } = await supabase.from('lessons').insert([lessonData]).select();
                 await clearState(cid);
                 if (lessonErr) return await sendMsg(cid, "❌ فشل إضافة الدرس. حاول مرة أخرى.", getAdminKeyboard(cid, admins));
@@ -474,7 +474,7 @@ async function handleStudent(cid, text, state, config) {
 // --- HELPER LOGIC ---
 
 async function sendStudentsList(cid, page) {
-    const { data: users } = await supabase.from('users').select('*').neq('role', 'system').neq('role', 'admin').order('created_at', { ascending: false });
+    const { data: users } = await supabase.from('users').select('*').neq('role', 'system').neq('role', 'admin').order('id', { ascending: false });
     const pageSize = 10;
     const start = page * pageSize;
     const slice = users.slice(start, start + pageSize);
@@ -491,7 +491,7 @@ async function sendStudentsList(cid, page) {
 }
 
 async function sendLessonsList(cid, page) {
-    const { data: lessons } = await supabase.from('lessons').select('*').order('created_at', { ascending: false });
+    const { data: lessons } = await supabase.from('lessons').select('*').order('id', { ascending: false });
     const pageSize = 10;
     const start = page * pageSize;
     const slice = lessons.slice(start, start + pageSize);
@@ -584,8 +584,7 @@ async function handleCallback(cid, data, config) {
         const code = Math.random().toString(36).substring(2, 10).toUpperCase();
         await supabase.from('coupons').insert([{ 
             code, 
-            duration_type: finalType,
-            created_at: new Date().toISOString() 
+            duration_type: finalType
         }]);
         return await sendMsg(cid, `✅ تم توليد كود جديد:\n<code>${code}</code>\n⏳ المدة: ${finalType}`, getAdminKeyboard(cid, admins));
     }
