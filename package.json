@@ -1,8 +1,0 @@
-{
-    "name": "doma-ai-platform",
-    "version": "3.0.0",
-    "description": "Doma AI Student Platform with Integrated Admin Bot",
-    "dependencies": {
-        "@supabase/supabase-js": "^2.39.0"
-    }
-}
