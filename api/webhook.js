@@ -253,18 +253,7 @@ async function handleAdmin(cid, text, state, config) {
         return await sendMsg(cid, msg, kb, true);
     }
 
-    // Super Admin Config
-    if (text === '⚙️ إعدادات الإدارة' && cid.toString() === SUPER_ADMIN) {
-        await updateState(cid, { action: 'admin_settings' });
-        const kb = [[{ text: '➕ إضافة مسؤول' }], [{ text: '📋 قائمة المسؤولين' }], [{ text: '🔙 رجوع' }]];
-        return await sendMsg(cid, "⚙️ <b>إعدادات الإدارة العليا:</b>", kb);
-    }
-
-    if (text === '➕ إضافة مسؤول' && cid.toString() === SUPER_ADMIN) {
-        await updateState(cid, { action: 'add_admin_id' });
-        return await sendMsg(cid, "👤 أرسل <b>Telegram ID</b> للشخص المراد إضافته:", getBackKeyboard());
-    }
-
+    // --- Admin Menu Redirects (Priority) ---
     if (text.includes('قائمة المسؤولين') && cid.toString() === SUPER_ADMIN) {
         const freshConfigForList = await getBotConfig();
         const names = freshConfigForList.names || {};
@@ -275,6 +264,17 @@ async function handleAdmin(cid, text, state, config) {
         const kb = staff.map(id => [{ text: `⚙️ ${names[id] || id}`, callback_data: `edit_adm:${id}` }]);
         kb.push([{ text: '🔙 رجوع', callback_data: 'admin_dashboard' }]);
         return await sendMsg(cid, msg, kb, true);
+    }
+    
+    if (text.includes('إضافة مسؤول') && cid.toString() === SUPER_ADMIN) {
+        await updateState(cid, { action: 'add_admin_id' });
+        return await sendMsg(cid, "👤 أرسل <b>Telegram ID</b> للشخص المراد إضافته:", getBackKeyboard());
+    }
+
+    if (text.includes('إعدادات الإدارة') && cid.toString() === SUPER_ADMIN) {
+        await updateState(cid, { action: 'admin_settings' });
+        const kb = [[{ text: '➕ إضافة مسؤول' }], [{ text: '📋 قائمة المسؤولين' }], [{ text: '🔙 رجوع' }]];
+        return await sendMsg(cid, "⚙️ <b>إعدادات الإدارة العليا:</b>", kb);
     }
 
     // State Handling Logic
