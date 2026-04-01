@@ -583,9 +583,22 @@ async function handleCallback(cid, data, config) {
         // Map to duration_type used by site
         const finalType = (durType === '30d' ? '1m' : (durType === '365d' ? '1y' : durType));
 
+        let finalDuration = parseInt(durType) || 1;
+        let finalTypeString = 'days';
+        if (durType === '1h') {
+            finalDuration = 1;
+            finalTypeString = 'hours';
+        } else if (durType === '30d') {
+            finalDuration = 30;
+        } else if (durType === '365d') {
+            finalDuration = 365;
+        }
+
         const code = Math.random().toString(36).substring(2, 10).toUpperCase();
         await supabase.from('coupons').insert([{ 
             code, 
+            duration: finalDuration,
+            type: finalTypeString,
             duration_type: finalType,
             created_at: new Date().toISOString() 
         }]);
