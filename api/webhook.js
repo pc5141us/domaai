@@ -85,40 +85,50 @@ function hasPermission(userId, perm, admins) {
 // --- UI COMPONENTS ---
 
 const getAdminKeyboard = (userId, admins) => {
-    const buttons = [];
     const uid = userId?.toString();
+    const rows = [];
     
-    if (hasPermission(uid, 'stats', admins)) buttons.push({ text: '📊 إحصائيات المنصة' });
-    if (hasPermission(uid, 'broadcast', admins)) buttons.push({ text: '📢 إذاعة إعلان' });
-    if (hasPermission(uid, 'site_ann', admins)) buttons.push({ text: '📢 إعلان الموقع' });
-    
-    if (hasPermission(uid, 'lessons', admins)) {
-        buttons.push({ text: '📚 إدارة الدروس' });
-        buttons.push({ text: '➕ إضافة درس' });
-        buttons.push({ text: '🔍 بحث عن درس' });
-    }
-    
-    if (hasPermission(uid, 'students', admins)) {
-        buttons.push({ text: '👥 إدارة الطلاب' });
-        buttons.push({ text: '➕ إضافة طالب' });
-        buttons.push({ text: '🔍 بحث عن طالب' });
-    }
-    
-    if (hasPermission(uid, 'codes', admins)) {
-        buttons.push({ text: '🎫 توليد الأكواد' });
-        buttons.push({ text: '🏷️ عرض الأكواد' });
-    }
-    
-    if (uid === SUPER_ADMIN) buttons.push({ text: '⚙️ إعدادات الإدارة' });
-    
-    buttons.push({ text: '❓ مساعدة' });
+    // Row 1: Dashboard & Announcements
+    const row1 = [];
+    if (hasPermission(uid, 'stats', admins)) row1.push({ text: '📊 إحصائيات المنصة' });
+    if (hasPermission(uid, 'broadcast', admins)) row1.push({ text: '📢 إذاعة إعلان' });
+    if (hasPermission(uid, 'site_ann', admins)) row1.push({ text: '📢 إعلان الموقع' });
+    if (row1.length) rows.push(row1);
 
-    // Chunk layout: 2 per row
-    const keyboard = [];
-    for (let i = 0; i < buttons.length; i += 2) {
-        keyboard.push(buttons.slice(i, i + 2));
+    // Row 2: Lesson Management
+    const row2 = [];
+    if (hasPermission(uid, 'lessons', admins)) {
+        row2.push({ text: '📚 إدارة الدروس' });
+        row2.push({ text: '➕ إضافة درس' });
+        row2.push({ text: '🔍 بحث عن درس' });
     }
-    return keyboard;
+    if (row2.length) rows.push(row2);
+
+    // Row 3: Student Management
+    const row3 = [];
+    if (hasPermission(uid, 'students', admins)) {
+        row3.push({ text: '👥 إدارة الطلاب' });
+        row3.push({ text: '➕ إضافة طالب' });
+        row3.push({ text: '🔍 بحث عن طالب' });
+    }
+    if (row3.length) rows.push(row3);
+
+    // Row 4: Keys & System
+    const row4 = [];
+    if (hasPermission(uid, 'codes', admins)) {
+        row4.push({ text: '🎫 توليد الأكواد' });
+        row4.push({ text: '🏷️ عرض الأكواد' });
+        row4.push({ text: '✏️ تعديل كود' });
+    }
+    if (row4.length) rows.push(row4);
+
+    // Row 5: Admin & Help
+    const row5 = [];
+    if (uid === SUPER_ADMIN) row5.push({ text: '⚙️ إعدادات الإدارة' });
+    row5.push({ text: '❓ مساعدة' });
+    rows.push(row5);
+
+    return rows;
 };
 
 const getStudentKeyboard = () => [[{ text: '✉️ تواصل مع الإدارة' }]];
@@ -253,6 +263,11 @@ async function handleAdmin(cid, text, state, config) {
         return await sendMsg(cid, msg, kb, true);
     }
 
+    if (text === '✏️ تعديل كود' && hasPermission(cid, 'codes', admins)) {
+        await updateState(cid, { action: 'pick_coupon_to_edit' });
+        return await sendMsg(cid, "✏️ <b>تعديل كود تفعيل:</b>\nأرسل الكود الذي تريد تعديله:", getBackKeyboard());
+    }
+
     // --- Admin Menu Redirects (Priority) ---
     if (text.includes('قائمة المسؤولين') && cid.toString() === SUPER_ADMIN) {
         const freshConfigForList = await getBotConfig();
@@ -363,6 +378,11 @@ async function handleAdmin(cid, text, state, config) {
                 await saveBotConfig(freshConfig);
                 await clearState(cid);
                 return await sendMsg(cid, `✅ تمت إضافة <b>${adminName}</b> (@${targetAid}) كمسؤول بنجاح.`, getAdminKeyboard(cid, admins));
+            case 'pick_coupon_to_edit':
+                const { data: cpns } = await supabase.from('coupons').select('*').eq('code', text.trim().toUpperCase()).maybeSingle();
+                if (!cpns) return await sendMsg(cid, "❌ الكود غير موجود. تأكد من صحة الكود وأعد المحاولة:", getBackKeyboard());
+                await clearState(cid);
+                return await handleCallback(cid, `cpn_view:${cpns.id}`, config);
 
             case 'ed_ls_title':
                 await updateState(cid, { action: 'ed_ls_url', temp_data: { ...(state.temp_data || {}), title: text } });
