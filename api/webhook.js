@@ -1,52 +1,217 @@
 /**
- * Doma AI Bot - Rebuilt from scratch (v3.0.0)
+ * Doma AI Bot - Rebuilt from scratch (v3.1.0)
  * Optimized for Vercel Serverless & Supabase
+ * Matching Site Logic & Schema (No created_at, using id for ordering)
  */
 import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIGURATION ---
 const BOT_TOKEN = '8598472216:AAE7gQmUpaWPeEgq7ZFlnTGuzedGUAQfFoU';
 const SUPER_ADMIN = '682572594';
+
+// Matching db.js encoding for consistency as requested
 const SUPABASE_URL = atob('aHR0cHM6Ly9sYWtnZGNzeXRvd25vaXlydmxpcS5zdXBhYmFzZS5jbw==');
 const SUPABASE_KEY = atob('c2JfcHVibGlzaGFibGVfT2IxUjF0Ql9TV3ctcDBWeUh6R3RKQV9mbjJCREthdQ==');
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const PERMISSIONS = {
     stats: '📊 إحصائيات',
-    broadcast: '📢 إذاعة تليجرام',
-    site_ann: '📢 إعلان الموقع',
-    lessons: '📚 إدارة الدروس',
-    students: '👥 إدارة الطلاب',
-    codes: '🎫 الأكواد'
+    students: '👥 الطلاب',
+    lessons: '📚 الدروس',
+    codes: '🏷️ الأكواد',
+    settings: '⚙️ الإعدادات'
 };
 
-// --- CORE UTILITIES ---
+// --- CORE HANDLER ---
+export default async (req, res) => {
+    if (req.method !== 'POST') return res.status(200).send('OK');
 
-async function tg(method, payload) {
+    const { message, callback_query } = req.body;
+    const data = message || callback_query?.message;
+    if (!data) return res.status(200).send('OK');
+
+    const cid = data.chat.id.toString();
+    const mid = data.message_id;
+    const text = message?.text;
+    const cbData = callback_query?.data;
+
     try {
-        const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        return await response.json();
-    } catch (e) {
-        console.error(`TG API ERROR [${method}]:`, e);
-        return { ok: false, error: e.message };
+        const admins = await getAdmins();
+        if (!isAdmin(cid, admins) && cid !== SUPER_ADMIN) {
+            if (text === '/start') await sendMsg(cid, "❌ عذراً، أنت لست مسؤولاً في هذا النظام.");
+            return res.status(200).send('OK');
+        }
+
+        if (cbData) {
+            await handleCallback(cid, mid, cbData, admins);
+        } else if (text) {
+            await handleMessage(cid, text, admins);
+        }
+    } catch (err) {
+        console.error('Bot Error:', err);
+    }
+
+    res.status(200).send('OK');
+};
+
+// --- MESSAGE HANDLER ---
+async function handleMessage(cid, text, admins) {
+    if (text === '/start' || text === '🏠 القائمة الرئيسية') {
+        await sendMsg(cid, "👋 أهلاً بك في لوحة تحكم Doma AI\nاختر من القائمة أدناه:", getMainKeyboard(cid, admins));
+        await clearState(cid);
+        return;
+    }
+
+    const state = await getState(cid);
+
+    // 1. STATS
+    if (text === PERMISSIONS.stats && hasPermission(cid, 'stats', admins)) {
+        const [uCount, lCount, cCount] = await Promise.all([
+            supabase.from('users').select('*', { count: 'exact', head: true }).neq('role', 'system'),
+            supabase.from('lessons').select('*', { count: 'exact', head: true }),
+            supabase.from('coupons').select('*', { count: 'exact', head: true })
+        ]);
+        const msg = `📊 <b>إحصائيات المنصة:</b>\n\n👥 الطلاب: ${uCount.count || 0}\n📚 الدروس: ${lCount.count || 0}\n🏷️ الأكواد: ${cCount.count || 0}`;
+        return await sendMsg(cid, msg, getMainKeyboard(cid, admins));
+    }
+
+    // 2. STUDENTS
+    if (text === PERMISSIONS.students && hasPermission(cid, 'students', admins)) {
+        return await sendStudentsList(cid, 0);
+    }
+
+    // 3. LESSONS
+    if (text === PERMISSIONS.lessons && hasPermission(cid, 'lessons', admins)) {
+        const kb = {
+            inline_keyboard: [
+                [{ text: "➕ إضافة درس جديد", callback_data: "add_lesson_start" }],
+                [{ text: "📜 عرض قائمة الدروس", callback_data: "list_lessons_0" }]
+            ]
+        };
+        return await sendMsg(cid, "📚 إدارة الدروس:", kb);
+    }
+
+    // 4. CODES (COUPONS)
+    if (text === PERMISSIONS.codes && hasPermission(cid, 'codes', admins)) {
+        const kb = {
+            inline_keyboard: [
+                [{ text: "➕ توليد كود جديد", callback_data: "gen_code_start" }],
+                [{ text: "📜 عرض قائمة الأكواد", callback_data: "list_codes_0" }]
+            ]
+        };
+        return await sendMsg(cid, "🏷️ إدارة أكواد التفعيل:", kb);
+    }
+
+    // 5. SETTINGS
+    if (text === PERMISSIONS.settings && cid === SUPER_ADMIN) {
+        const adminList = admins.map(a => `• ${a.name} (${a.id})`).join('\n') || "لا يوجد مسؤولين حالياً.";
+        const kb = {
+            inline_keyboard: [[{ text: "➕ إضافة مسؤول", callback_data: "add_admin_start" }]]
+        };
+        return await sendMsg(cid, `⚙️ <b>إعدادات النظام:</b>\n\n👥 المسؤولون الحاليون:\n${adminList}`, kb);
+    }
+
+    // --- STATE FLOWS ---
+    if (state) {
+        switch (state.action) {
+            case 'add_admin_id':
+                await saveState(cid, { action: 'add_admin_name', target_id: text });
+                return await sendMsg(cid, "👤 حسناً، أرسل اسم المسؤول:");
+            case 'add_admin_name':
+                admins.push({ id: state.target_id, name: text, permissions: Object.keys(PERMISSIONS) });
+                await updateAdmins(admins);
+                await clearState(cid);
+                return await sendMsg(cid, `✅ تم إضافة المسؤول ${text} بنجاح!`, getMainKeyboard(cid, admins));
+            
+            case 'add_lesson_title':
+                await saveState(cid, { action: 'add_lesson_url', temp_data: { title: text } });
+                return await sendMsg(cid, "🔗 أرسل رابط الفيديو (Vimeo/YouTube):");
+            case 'add_lesson_url':
+                await saveState(cid, { action: 'add_lesson_desc', temp_data: { ...state.temp_data, video_url: text } });
+                return await sendMsg(cid, "📝 أرسل وصف الدرس (أو أرسل - للتخطي):");
+            case 'add_lesson_desc':
+                const finalData = { ...state.temp_data, description: text === '-' ? '' : text };
+                const { error: lErr } = await supabase.from('lessons').insert([finalData]);
+                await clearState(cid);
+                if (lErr) return await sendMsg(cid, "❌ فشل إضافة الدرس.");
+                return await sendMsg(cid, "✅ تم إضافة الدرس بنجاح!", getMainKeyboard(cid, admins));
+        }
     }
 }
 
-async function getBotConfig() {
-    try {
-        const { data } = await supabase.from('users').select('password').eq('username', 'DOMA_AI_BOT').maybeSingle();
-        return data?.password ? JSON.parse(data.password) : { admins: {}, announcement: {}, all_users: [], names: {}, sessions: {} };
-    } catch (e) {
-        return { admins: {}, announcement: {}, all_users: [], names: {}, sessions: {} };
+// --- CALLBACK HANDLER ---
+async function handleCallback(cid, mid, data, admins) {
+    const [action, val, extra] = data.split('_');
+
+    if (action === 'list' && val === 'students') return await sendStudentsList(cid, parseInt(extra));
+    if (action === 'list' && val === 'lessons') return await sendLessonsList(cid, parseInt(extra));
+    if (action === 'list' && val === 'codes') return await sendCodesList(cid, parseInt(extra));
+
+    if (action === 'view' && val === 'user') {
+        const { data: user } = await supabase.from('users').select('*').eq('id', extra).maybeSingle();
+        if (!user) return await editMsg(cid, mid, "❌ مستخدم غير موجود.");
+        const status = user.is_active ? "✅ مفعل" : "❌ غير مفعل";
+        const msg = `👤 <b>بيانات الطالب:</b>\n\nاسم المستخدم: <code>${user.username}</code>\nالحالة: ${status}\nانتهاء الاشتراك: ${user.expiry_date || 'N/A'}`;
+        const kb = {
+            inline_keyboard: [
+                [{ text: "🗑️ حذف الطالب", callback_data: `del_user_${user.id}` }],
+                [{ text: "🔙 عودة", callback_data: "list_students_0" }]
+            ]
+        };
+        return await editMsg(cid, mid, msg, kb);
+    }
+
+    if (action === 'del' && val === 'user') {
+        await supabase.from('users').delete().eq('id', extra);
+        return await editMsg(cid, mid, "✅ تم حذف الطالب.");
+    }
+
+    if (action === 'del' && val === 'code') {
+        await supabase.from('coupons').delete().eq('id', extra);
+        return await editMsg(cid, mid, "✅ تم حذف الكود.");
+    }
+
+    if (action === 'add' && val === 'lesson') {
+        await saveState(cid, { action: 'add_lesson_title' });
+        return await sendMsg(cid, "📝 أرسل عنوان الدرس الجديد:");
+    }
+
+    if (action === 'gen' && val === 'code') {
+        await saveState(cid, { action: 'gen_code_dur' });
+        const kb = {
+            inline_keyboard: [
+                [{ text: "ساعة واحدة", callback_data: "do_gen_1h" }],
+                [{ text: "يوم واحد", callback_data: "do_gen_1d" }],
+                [{ text: "7 أيام", callback_data: "do_gen_7d" }],
+                [{ text: "30 يوم", callback_data: "do_gen_30d" }],
+                [{ text: "سنة كاملة", callback_data: "do_gen_1y" }]
+            ]
+        };
+        return await editMsg(cid, mid, "⏳ اختر مدة الكود:", kb);
+    }
+
+    if (action === 'do' && val === 'gen') {
+        const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+        await supabase.from('coupons').insert([{ code, duration_type: extra }]);
+        await editMsg(cid, mid, `✅ تم توليد كود جديد:\n<code>${code}</code>\nالمدة: ${extra}`);
+        await clearState(cid);
+    }
+
+    if (action === 'add' && val === 'admin') {
+        await saveState(cid, { action: 'add_admin_id' });
+        return await sendMsg(cid, "🆔 أرسل الـ Telegram ID للمسؤول الجديد:");
     }
 }
 
-async function saveBotConfig(config) {
-    const jsonStr = JSON.stringify(config);
+// --- DATABASE FUNCTIONS ---
+async function getAdmins() {
+    const { data } = await supabase.from('users').select('password').eq('username', 'DOMA_AI_BOT').maybeSingle();
+    return data ? JSON.parse(atob(data.password)) : [];
+}
+
+async function updateAdmins(admins) {
+    const jsonStr = btoa(JSON.stringify(admins));
     const { data: botUser } = await supabase.from('users').select('id').eq('username', 'DOMA_AI_BOT').maybeSingle();
     if (botUser) {
         await supabase.from('users').update({ password: jsonStr }).eq('id', botUser.id);
@@ -55,717 +220,79 @@ async function saveBotConfig(config) {
     }
 }
 
-async function getState(cid) {
-    const config = await getBotConfig();
-    return config.sessions?.[cid?.toString()] || {};
-}
-
-async function updateState(cid, newState) {
-    const config = await getBotConfig();
-    if (!config.sessions) config.sessions = {};
-    config.sessions[cid.toString()] = { ...(config.sessions[cid.toString()] || {}), ...newState };
-    await saveBotConfig(config);
-}
-
-async function clearState(cid) {
-    const config = await getBotConfig();
-    if (config.sessions?.[cid.toString()]) {
-        delete config.sessions[cid.toString()];
-        await saveBotConfig(config);
-    }
-}
-
-function hasPermission(userId, perm, admins) {
-    const uid = userId?.toString();
-    if (uid === SUPER_ADMIN) return true;
-    const userPerms = admins[uid] || [];
-    return userPerms.includes(perm);
-}
-
-// --- UI COMPONENTS ---
-
-const getAdminKeyboard = (userId, admins) => {
-    const uid = userId?.toString();
-    const rows = [];
-    
-    // Row 1: Dashboard & Announcements
-    const row1 = [];
-    if (hasPermission(uid, 'stats', admins)) row1.push({ text: '📊 إحصائيات المنصة' });
-    if (hasPermission(uid, 'broadcast', admins)) row1.push({ text: '📢 إذاعة إعلان' });
-    if (hasPermission(uid, 'site_ann', admins)) row1.push({ text: '📢 إعلان الموقع' });
-    if (row1.length) rows.push(row1);
-
-    // Row 2: Lesson Management
-    const row2 = [];
-    if (hasPermission(uid, 'lessons', admins)) {
-        row2.push({ text: '📚 إدارة الدروس' });
-        row2.push({ text: '➕ إضافة درس' });
-        row2.push({ text: '🔍 بحث عن درس' });
-    }
-    if (row2.length) rows.push(row2);
-
-    // Row 3: Student Management
-    const row3 = [];
-    if (hasPermission(uid, 'students', admins)) {
-        row3.push({ text: '👥 إدارة الطلاب' });
-        row3.push({ text: '➕ إضافة طالب' });
-        row3.push({ text: '🔍 بحث عن طالب' });
-    }
-    if (row3.length) rows.push(row3);
-
-    // Row 4: Keys & System
-    const row4 = [];
-    if (hasPermission(uid, 'codes', admins)) {
-        row4.push({ text: '🎫 توليد الأكواد' });
-        row4.push({ text: '🏷️ عرض الأكواد' });
-        row4.push({ text: '✏️ تعديل كود' });
-    }
-    if (row4.length) rows.push(row4);
-
-    // Row 5: Admin & Help
-    const row5 = [];
-    if (uid === SUPER_ADMIN) row5.push({ text: '⚙️ إعدادات الإدارة' });
-    row5.push({ text: '❓ مساعدة' });
-    rows.push(row5);
-
-    return rows;
-};
-
-const getStudentKeyboard = () => [[{ text: '✉️ تواصل مع الإدارة' }]];
-
-const getBackKeyboard = () => [[{ text: '🔙 رجوع' }]];
-
-// --- MESSAGE HANDLERS ---
-
-async function sendMsg(cid, text, keyboard = null, isInline = false) {
-    const payload = {
-        chat_id: cid,
-        text,
-        parse_mode: 'HTML',
-        reply_markup: keyboard ? (isInline ? { inline_keyboard: keyboard } : { keyboard, resize_keyboard: true }) : { remove_keyboard: true }
-    };
-    return await tg('sendMessage', payload);
-}
-
-// --- LOGIC HANDLERS ---
-
-async function handleAdmin(cid, text, state, config) {
-    const admins = config.admins || {};
-    
-    // Debug Logs
-    console.log(`[ADMIN_MSG] CID: ${cid}, Text: "${text}", Action: ${state.action}`);
-
-    // Help for finding ID
-    if (text === '/myid') {
-        return await sendMsg(cid, `🆔 معرف التليجرام الخاص بك: <code>${cid}</code>`);
-    }
-
-    // Main Commands
-    if (text === '/start' || text === '🏠 الرئيسية' || text === '🔙 العودة للقائمة الرئيسية' || text === '🔙 رجوع' || text === '🔙 إلغاء') {
-        await clearState(cid);
-        return await sendMsg(cid, "🏠 <b>لوحة تحكم Doma AI</b>\nأهلاً بك يا أدمن. اختر من الخيارات أدناه:", getAdminKeyboard(cid, admins));
-    }
-
-    if (text === '📊 إحصائيات المنصة' && hasPermission(cid, 'stats', admins)) {
-        const [{ count: userCount, data: userData }, { count: lessonCount }, { count: codeCount }] = await Promise.all([
-            supabase.from('users').select('*', { count: 'exact' }).neq('role', 'system'),
-            supabase.from('lessons').select('*', { count: 'exact', head: true }),
-            supabase.from('coupons').select('*', { count: 'exact', head: true })
-        ]);
-        
-        const now = Date.now();
-        const online = (userData || []).filter(u => u.last_active && (now - new Date(u.last_active).getTime() < 180000)).length;
-        const active = (userData || []).filter(u => u.status === 'active' && (!u.expiry_date || new Date(u.expiry_date) > now)).length;
-        const expired = (userData || []).filter(u => ['active', 'pending'].includes(u.status) && u.expiry_date && new Date(u.expiry_date) <= now).length;
-        const banned = (userData || []).filter(u => u.status === 'banned').length;
-
-        const msg = `📊 <b>إحصائيات المنصة:</b>\n\n👥 الإجمالي: ${userCount}\n🟢 نشط: ${active}\n⏳ منتهية: ${expired}\n🔴 محظور: ${banned}\n🌐 متصل الآن: ${online}\n📚 الدروس: ${lessonCount}\n🎫 الأكواد: ${codeCount}`;
-        const kb = [[{ text: '⏳ عرض المنتهيين' }], [{ text: '🔙 رجوع' }]];
-        return await sendMsg(cid, msg, kb);
-    }
-
-    if (text === '⏳ عرض المنتهيين' && hasPermission(cid, 'stats', admins)) {
-        const { data: users } = await supabase.from('users').select('*').neq('role', 'system');
-        const now = Date.now();
-        const expired = (users || []).filter(u => ['active', 'pending'].includes(u.status) && u.expiry_date && new Date(u.expiry_date) <= now);
-        if (!expired.length) return await sendMsg(cid, "✅ لا يوجد طلاب منتهية اشتراكاتهم حالياً.", getAdminKeyboard(cid, admins));
-        let msg = `⏳ <b>قائمة المنتهيين (${expired.length}):</b>\n\n`;
-        const kb = expired.slice(0, 15).map(u => [{ text: `👤 🔴 ${u.username}`, callback_data: `st:${u.id}` }]);
-        kb.push([{ text: '🔙 رجوع' }]);
-        return await sendMsg(cid, msg, kb, true);
-    }
-
-    if (text === '📢 إذاعة إعلان' && hasPermission(cid, 'broadcast', admins)) {
-        await updateState(cid, { action: 'awaiting_broadcast' });
-        return await sendMsg(cid, "📢 <b>إرسال إذاعة:</b>\nأرسل الرسالة التي تريد إرسالها لجميع الطلاب:", [[{ text: '🔙 إلغاء' }]]);
-    }
-
-    if (text === '📢 إعلان الموقع' && hasPermission(cid, 'site_ann', admins)) {
-        const kb = [[{ text: '📝 تعديل النص' }, { text: '🔗 تعديل الرابط' }], [{ text: '🗑️ حذف الإعلان' }], [{ text: '🔙 رجوع' }]];
-        return await sendMsg(cid, "📢 <b>إعدادات شريط الموقع:</b>", kb);
-    }
-
-    if (text === '📝 تعديل النص' && hasPermission(cid, 'site_ann', admins)) {
-        await updateState(cid, { action: 'site_ann_text' });
-        return await sendMsg(cid, "📝 أرسل <b>نص الإعلان</b> الجديد المكتوب في شريط الموقع:", [[{ text: '🔙 رجوع' }]]);
-    }
-    
-    if (text === '🔗 تعديل الرابط' && hasPermission(cid, 'site_ann', admins)) {
-        await updateState(cid, { action: 'site_ann_url' });
-        return await sendMsg(cid, "🔗 أرسل <b>رابط الزر</b> الجديد:", [[{ text: '🔙 رجوع' }]]);
-    }
-
-    if (text === '🗑️ حذف الإعلان' && hasPermission(cid, 'site_ann', admins)) {
-        await updateSiteAnnouncement({ text: '', buttonText: '', buttonUrl: '' });
-        return await sendMsg(cid, "✅ تم حذف إعلان الموقع بنجاح.", getAdminKeyboard(cid, admins));
-    }
-    
-    // Lessons
-    if (text === '➕ إضافة درس' && hasPermission(cid, 'lessons', admins)) {
-        await updateState(cid, { action: 'add_lesson_title' });
-        return await sendMsg(cid, "📚 <b>إضافة درس جديد:</b>\nأرسل عنوان الدرس:", getBackKeyboard());
-    }
-
-    if (text === '📚 إدارة الدروس' && hasPermission(cid, 'lessons', admins)) {
-        return await sendLessonsList(cid, 0);
-    }
-
-    // Students
-    if (text === '👥 إدارة الطلاب' && hasPermission(cid, 'students', admins)) {
-        return await sendStudentsList(cid, 0);
-    }
-    
-    if (text === '🔍 بحث عن درس' && hasPermission(cid, 'lessons', admins)) {
-        await updateState(cid, { action: 'search_lesson' });
-        return await sendMsg(cid, "🔍 <b>البحث عن درس:</b>\nأرسل عنوان الدرس للبحث:", getBackKeyboard());
-    }
-
-    if (text === '➕ إضافة طالب' && hasPermission(cid, 'students', admins)) {
-        await updateState(cid, { action: 'add_student_name' });
-        return await sendMsg(cid, "👤 <b>إضافة طالب جديد:</b>\nأرسل اسم المستخدم المفضل للطالب:", getBackKeyboard());
-    }
-
-    // Codes
-    if (text === '🎫 توليد الأكواد' && hasPermission(cid, 'codes', admins)) {
-        const kb = [
-            [{ text: '🎫 كود ساعة', callback_data: 'gen:1h' }, { text: '🎫 كود يوم', callback_data: 'gen:1d' }],
-            [{ text: '🎫 كود شهر', callback_data: 'gen:30d' }, { text: '🎫 كود سنة', callback_data: 'gen:365d' }]
-        ];
-        return await sendMsg(cid, "🎫 <b>توليد أكواد تفعيل:</b>\nاختر المدة المطلوبة:", kb, true);
-    }
-
-    if (text === '🏷️ عرض الأكواد' && hasPermission(cid, 'codes', admins)) {
-        const { data: codes } = await supabase.from('coupons').select('*').order('id', { ascending: false }).limit(20);
-        if (!codes?.length) return await sendMsg(cid, "❌ لا توجد أكواد حالياً.", getAdminKeyboard(cid, admins));
-        let msg = "🏷️ <b>أحدث 20 كود:</b>\n\n";
-        const kb = codes.map(c => {
-            let label = c.duration_type || `${c.duration}${c.type === 'hours' ? 'h' : 'd'}`;
-            return [{ text: `🎫 ${c.code} (${label})`, callback_data: `cpn_view:${c.id}` }];
-        });
-        kb.push([{ text: '🔙 رجوع' }]);
-        return await sendMsg(cid, msg, kb, true);
-    }
-
-    if (text === '✏️ تعديل كود' && hasPermission(cid, 'codes', admins)) {
-        await updateState(cid, { action: 'pick_coupon_to_edit' });
-        return await sendMsg(cid, "✏️ <b>تعديل كود تفعيل:</b>\nأرسل الكود الذي تريد تعديله:", getBackKeyboard());
-    }
-
-    // --- Admin Menu Redirects (Priority) ---
-    if (text.includes('قائمة المسؤولين') && cid.toString() === SUPER_ADMIN) {
-        const freshConfigForList = await getBotConfig();
-        const names = freshConfigForList.names || {};
-        const staff = Object.keys(freshConfigForList.admins || {});
-        let msg = "📋 <b>قائمة المسؤولين:</b>\n\n";
-        if (staff.length === 0) msg += "❌ لا يوجد مسؤولون مضافون حالياً.";
-        
-        const kb = staff.map(id => [{ text: `⚙️ ${names[id] || id}`, callback_data: `edit_adm:${id}` }]);
-        kb.push([{ text: '🔙 رجوع', callback_data: 'admin_dashboard' }]);
-        return await sendMsg(cid, msg, kb, true);
-    }
-    
-    if (text.includes('إضافة مسؤول') && cid.toString() === SUPER_ADMIN) {
-        await updateState(cid, { action: 'add_admin_id' });
-        return await sendMsg(cid, "👤 أرسل <b>Telegram ID</b> للشخص المراد إضافته:", getBackKeyboard());
-    }
-
-    if (text.includes('إعدادات الإدارة') && cid.toString() === SUPER_ADMIN) {
-        await updateState(cid, { action: 'admin_settings' });
-        const kb = [[{ text: '➕ إضافة مسؤول' }], [{ text: '📋 قائمة المسؤولين' }], [{ text: '🔙 رجوع' }]];
-        return await sendMsg(cid, "⚙️ <b>إعدادات الإدارة العليا:</b>", kb);
-    }
-
-    // State Handling Logic
-    if (state.action) {
-        switch (state.action) {
-            case 'awaiting_broadcast':
-                await clearState(cid);
-                await sendMsg(cid, "⏳ جاري الإذاعة... قد يستغرق هذا وقتاً.");
-                const count = await doBroadcast(`📢 <b>إعلان جديد:</b>\n\n${text}`, config.all_users || []);
-                return await sendMsg(cid, `✅ تم الإرسال بنجاح لـ <b>${count}</b> مستخدم.`, getAdminKeyboard(cid, admins));
-            
-            case 'add_lesson_title':
-                await updateState(cid, { action: 'add_lesson_url', temp_data: { ...(state.temp_data || {}), title: text } });
-                return await sendMsg(cid, `✅ العنوان: ${text}\nأرسل الآن <b>رابط الفيديو:</b>`, getBackKeyboard());
-            
-            case 'add_lesson_url':
-                await updateState(cid, { action: 'add_lesson_desc', temp_data: { ...(state.temp_data || {}), url: text } });
-                return await sendMsg(cid, "📝 أرسل الآن <b>وصف الدرس</b> (اختياري، أرسل '-' لتخطيه):", getBackKeyboard());
-            
-            case 'add_lesson_desc':
-                const desc = text === '-' ? '' : text;
-                const lessonData = { ...(state.temp_data || {}), description: desc };
-                const { data: newLessonRec, error: lessonErr } = await supabase.from('lessons').insert([lessonData]).select();
-                await clearState(cid);
-                if (lessonErr) return await sendMsg(cid, "❌ فشل إضافة الدرس. حاول مرة أخرى.", getAdminKeyboard(cid, admins));
-                await notifyAdmins(`🆕 <b>تم إضافة درس جديد:</b>\n📖 ${lessonData.title}`);
-                return await sendMsg(cid, "✅ تم إضافة الدرس بنجاح!", getAdminKeyboard(cid, admins));
-                
-            case 'search_student':
-                const { data: users } = await supabase.from('users').select('*').ilike('username', `%${text}%`).limit(10);
-                if (!users?.length) return await sendMsg(cid, "❌ لم يتم العثور على نتائج.", getAdminKeyboard(cid, admins));
-                const ik_st = users.map(u => [{ text: `👤 ${u.username}`, callback_data: `st:${u.id}` }]);
-                return await sendMsg(cid, `🔍 <b>نتائج البحث للـ "${text}":</b>`, ik_st, true);
-
-            case 'search_lesson':
-                const { data: lessons } = await supabase.from('lessons').select('*').ilike('title', `%${text}%`).limit(10);
-                if (!lessons?.length) return await sendMsg(cid, "❌ لم يتم العثور على نتائج.", getAdminKeyboard(cid, admins));
-                const ik_ls = lessons.map(l => [{ text: `📖 ${l.title}`, callback_data: `ls:${l.id}` }]);
-                return await sendMsg(cid, `🔍 <b>نتائج البحث للـ "${text}":</b>`, ik_ls, true);
-
-            case 'add_student_name':
-                await updateState(cid, { action: 'add_student_pass', temp_data: { ...(state.temp_data || {}), username: text.toLowerCase() } });
-                return await sendMsg(cid, `✅ الاسم: ${text}\nأرسل الآن <b>كلمة المرور</b> للطالب:`, getBackKeyboard());
-
-            case 'add_student_pass':
-                const newStudent = { 
-                    username: state.temp_data.username, 
-                    password: text, 
-                    role: 'student', 
-                    status: 'active',
-                    expiry_date: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)).toISOString() // Default 30 days
-                };
-                await supabase.from('users').insert([newStudent]);
-                await clearState(cid);
-                return await sendMsg(cid, `✅ تم إضافة الطالب <b>${newStudent.username}</b> بنجاح بمدة 30 يوم.`, getAdminKeyboard(cid, admins));
-
-            case 'site_ann_text':
-                await updateState(cid, { action: 'site_ann_btn_text', temp_data: { ...(state.temp_data || {}), text } });
-                return await sendMsg(cid, "🔘 أرسل <b>نص الزر</b> (مثال: اشترك الآن) أو أرسل 'لا يوجد':", getBackKeyboard());
-            
-            case 'site_ann_btn_text':
-                const btnText = text === 'لا يوجد' ? '' : text;
-                await updateState(cid, { action: 'site_ann_finish', temp_data: { ...(state.temp_data || {}), buttonText: btnText } });
-                return await sendMsg(cid, "🔗 أرسل <b>رابط الزر</b> (مثال: https://...) أو أرسل 'لا يوجد':", getBackKeyboard());
-
-            case 'site_ann_finish':
-                const btnUrl = text === 'لا يوجد' ? '' : text;
-                const finalAnn = { ...state.temp_data, buttonUrl: btnUrl };
-                await updateSiteAnnouncement(finalAnn);
-                await clearState(cid);
-                return await sendMsg(cid, "✅ تم تحديث إعلان الموقع بنجاح!", getAdminKeyboard(cid, admins));
-
-            case 'add_admin_id':
-                const aid = text.trim();
-                await updateState(cid, { action: 'add_admin_name', target_admin: aid });
-                return await sendMsg(cid, `✅ تم تحديد المعرف: <code>${aid}</code>\nأرسل الآن <b>اسم المسؤول</b> (لعرضه في القائمة):`, getBackKeyboard());
-
-            case 'add_admin_name':
-                const targetAid = state.target_admin;
-                const adminName = text.trim();
-                const freshConfig = await getBotConfig();
-                if (!freshConfig.admins) freshConfig.admins = {};
-                if (!freshConfig.names) freshConfig.names = {};
-                freshConfig.admins[targetAid] = [];
-                freshConfig.names[targetAid] = adminName;
-                await saveBotConfig(freshConfig);
-                await clearState(cid);
-                return await sendMsg(cid, `✅ تمت إضافة <b>${adminName}</b> (@${targetAid}) كمسؤول بنجاح.`, getAdminKeyboard(cid, admins));
-            case 'pick_coupon_to_edit':
-                const { data: cpns } = await supabase.from('coupons').select('*').eq('code', text.trim().toUpperCase()).maybeSingle();
-                if (!cpns) return await sendMsg(cid, "❌ الكود غير موجود. تأكد من صحة الكود وأعد المحاولة:", getBackKeyboard());
-                await clearState(cid);
-                return await handleCallback(cid, `cpn_view:${cpns.id}`, config);
-
-            case 'ed_ls_title':
-                await updateState(cid, { action: 'ed_ls_url', temp_data: { ...(state.temp_data || {}), title: text } });
-                return await sendMsg(cid, `✅ العنوان الجديد: ${text}\nأرسل الآن <b>الرابط الجديد</b> (أو أرسل '-' لتخطيه):`, getBackKeyboard());
-            
-            case 'ed_ls_url':
-                const newUrl = text === '-' ? state.temp_data.url : text;
-                await updateState(cid, { action: 'ed_ls_desc', temp_data: { ...state.temp_data, url: newUrl } });
-                return await sendMsg(cid, `✅ الرابط: ${newUrl}\nأرسل الآن <b>الوصف الجديد</b> (أو أرسل '-' لتخطيه):`, getBackKeyboard());
-
-            case 'ed_ls_desc':
-                const newDesc = text === '-' ? state.temp_data.description : text;
-                await supabase.from('lessons').update({ title: state.temp_data.title, url: state.temp_data.url, description: newDesc }).eq('id', state.target_id);
-                await clearState(cid);
-                return await sendMsg(cid, "✅ تم تحديث الدرس بنجاح!", getAdminKeyboard(cid, admins));
-
-            case 'ed_cpn_dur':
-                const num = parseInt(text);
-                if (isNaN(num)) return await sendMsg(cid, "❌ يرجى إرسال رقم صحيح.");
-                
-                // Map number to duration_type (heuristic)
-                let dType = `${num}d`;
-                if (num === 30) dType = '1m';
-                if (num === 180) dType = '6m';
-                if (num === 365) dType = '1y';
-
-                await supabase.from('coupons').update({ 
-                    duration_type: dType 
-                }).eq('id', state.target_id);
-                
-                await clearState(cid);
-                return await sendMsg(cid, `✅ تم تحديث مدة الكود لـ <b>${dType}</b>.`, getAdminKeyboard(cid, admins));
-
-            case 'edit_user_pass':
-                await supabase.from('users').update({ password: text }).eq('id', state.target_id);
-                await clearState(cid);
-                return await sendMsg(cid, `✅ تم تغيير كلمة المرور بنجاح.`, getAdminKeyboard(cid, admins));
-
-            case 'edit_user_dur':
-                const days = parseInt(text);
-                if (isNaN(days)) return await sendMsg(cid, "❌ يرجى إرسال رقم صحيح للأيام.");
-                const expiry = new Date(Date.now() + (days * 24 * 60 * 60 * 1000)).toISOString();
-                await supabase.from('users').update({ expiry_date: expiry, status: 'active' }).eq('id', state.target_id);
-                await clearState(cid);
-                return await sendMsg(cid, `✅ تم تمديد الاشتراك لـ <b>${days}</b> يوم.`, getAdminKeyboard(cid, admins));
-
-            case 'rep_st':
-                await tg('sendMessage', { chat_id: state.target_id, text: `💬 <b>رد من الإدارة:</b>\n\n${text}`, parse_mode: 'HTML' });
-                await clearState(cid);
-                return await sendMsg(cid, "✅ تم إرسال الرد للمستخدم بنجاح.", getAdminKeyboard(cid, admins));
-        }
-    }
-
-    if (text === '🔙 رجوع' || text === '🔙 إلغاء') {
-        await clearState(cid);
-        return await sendMsg(cid, "🏠 العودة للقائمة الرئيسية", getAdminKeyboard(cid, admins));
-    }
-
-
-    // Default Fallback
-    return await sendMsg(cid, "❓ أمر غير معروف. استخدم القائمة للتحكم.", getAdminKeyboard(cid, admins));
-}
-
-async function handleStudent(cid, text, state, config) {
-    if (text === '/start' || text === '🔙 إلغاء') {
-        await clearState(cid);
-        return await sendMsg(cid, "👋 <b>أهلاً بك في منصة Doma AI</b>\nيسعدنا تواصلك معنا.", getStudentKeyboard());
-    }
-
-    if (text === '✉️ تواصل مع الإدارة') {
-        await updateState(cid, { action: 'contact_admin' });
-        return await sendMsg(cid, "✍️ أرسل رسالتك الآن وسيرد عليك أحد المشرفين قريباً:", [[{ text: '🔙 إلغاء' }]]);
-    }
-
-    if (state.action === 'contact_admin') {
-        await clearState(cid);
-        // Notify Admins
-        await notifyAdmins(`📨 <b>رسالة من طالب:</b>\n🆔 <code>${cid}</code>\n📝 ${text}`, [[{ text: '🙋‍♂️ رد على الطالب', callback_data: `rep:${cid}` }]]);
-        return await sendMsg(cid, "✅ تم إرسال رسالتك للإدارة بنجاح.", getStudentKeyboard());
-    }
-
-    // Default Help
-    return await sendMsg(cid, "👋 أهلاً بك! يمكنك الربط بحساب الموقع عن طريق إرسال <b>اسم المستخدم</b> الخاص بك هنا.", getStudentKeyboard());
-}
-
-// --- HELPER LOGIC ---
-
+// --- LIST HELPERS ---
 async function sendStudentsList(cid, page) {
-    const { data: users } = await supabase.from('users').select('*').neq('role', 'system').neq('role', 'admin').order('id', { ascending: false });
+    const { data: users } = await supabase.from('users').select('*').neq('role', 'system').order('id', { ascending: false });
     const pageSize = 10;
     const start = page * pageSize;
     const slice = users.slice(start, start + pageSize);
-    
-    if (!slice.length) return await sendMsg(cid, "❌ لا يوجد طلاب.");
-    
-    const kb = slice.map(u => [{ text: `👤 ${u.username}`, callback_data: `st:${u.id}` }]);
+    const kb = {
+        inline_keyboard: slice.map(u => [{ text: u.username, callback_data: `view_user_${u.id}` }])
+    };
     const nav = [];
-    if (page > 0) nav.push({ text: '⬅️ السابق', callback_data: `pg_st:${page - 1}` });
-    if (start + pageSize < users.length) nav.push({ text: 'التالي ➡️', callback_data: `pg_st:${page + 1}` });
-    if (nav.length) kb.push(nav);
-    
-    return await sendMsg(cid, `👥 <b>قائمة الطلاب (صفحة ${page + 1}):</b>`, kb, true);
+    if (page > 0) nav.push({ text: "⬅️", callback_data: `list_students_${page - 1}` });
+    if (start + pageSize < users.length) nav.push({ text: "➡️", callback_data: `list_students_${page + 1}` });
+    if (nav.length) kb.inline_keyboard.push(nav);
+    await sendMsg(cid, "👥 قائمة الطلاب:", kb);
 }
 
 async function sendLessonsList(cid, page) {
     const { data: lessons } = await supabase.from('lessons').select('*').order('id', { ascending: false });
-    const pageSize = 10;
-    const start = page * pageSize;
-    const slice = lessons.slice(start, start + pageSize);
-    
-    const kb = slice.map(l => [{ text: `📖 ${l.title}`, callback_data: `ls:${l.id}` }]);
-    const nav = [];
-    if (page > 0) nav.push({ text: '⬅️ السابق', callback_data: `pg_ls:${page - 1}` });
-    if (start + pageSize < lessons.length) nav.push({ text: 'التالي ➡️', callback_data: `pg_ls:${page + 1}` });
-    if (nav.length) kb.push(nav);
-    
-    return await sendMsg(cid, `📚 <b>قائمة الدروس (صفحة ${page + 1}):</b>`, kb, true);
+    const kb = { inline_keyboard: lessons.map(l => [{ text: l.title, callback_data: `view_lesson_${l.id}` }]) };
+    await editMsg(cid, null, "📚 قائمة الدروس:", kb); // Simple fallback
 }
 
-async function doBroadcast(text, users) {
-    let success = 0;
-    for (const uid of users) {
-        try {
-            const res = await tg('sendMessage', { chat_id: uid, text, parse_mode: 'HTML' });
-            if (res.ok) success++;
-        } catch (e) {}
-    }
-    return success;
+async function sendCodesList(cid, page) {
+    const { data: codes } = await supabase.from('coupons').select('*').order('id', { ascending: false }).limit(20);
+    const kb = {
+        inline_keyboard: codes.map(c => [
+            { text: `${c.code} (${c.duration_type})`, callback_data: "none" },
+            { text: "🗑️", callback_data: `del_code_${c.id}` }
+        ])
+    };
+    await sendMsg(cid, "🏷️ أحدث 20 كود:", kb);
 }
 
-async function notifyAdmins(text, keyboard = null) {
-    const config = await getBotConfig();
-    const admins = [SUPER_ADMIN, ...Object.keys(config.admins || {})];
-    for (const aid of admins) {
-        await tg('sendMessage', { chat_id: aid, text, parse_mode: 'HTML', reply_markup: keyboard ? { inline_keyboard: keyboard } : undefined });
-    }
+// --- TELEGRAM HELPERS ---
+async function sendMsg(cid, text, kb = null) {
+    const body = { chat_id: cid, text, parse_mode: 'HTML', reply_markup: kb };
+    return await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
 }
 
-async function updateSiteAnnouncement(obj) {
-    const jsonStr = JSON.stringify(obj);
-    const { data: ann } = await supabase.from('users').select('id').eq('username', 'ANNOUNCEMENT_DATA').maybeSingle();
-    if (ann) {
-        await supabase.from('users').update({ password: jsonStr }).eq('id', ann.id);
-    } else {
-        await supabase.from('users').insert([{ username: 'ANNOUNCEMENT_DATA', password: jsonStr, role: 'system', status: 'active', is_active: true }]);
-    }
+async function editMsg(cid, mid, text, kb = null) {
+    const body = { chat_id: cid, message_id: mid, text, parse_mode: 'HTML', reply_markup: kb };
+    return await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
 }
 
-async function handleCallback(cid, data, config) {
-    const admins = config.admins || {};
-    const isAdmin = (id) => id?.toString() === SUPER_ADMIN || !!admins[id?.toString()];
-
-    if (!isAdmin(cid)) return;
-
-    if (data.startsWith('st:')) {
-        const id = data.split(':')[1];
-        const { data: user } = await supabase.from('users').select('*').eq('id', id).single();
-        if (!user) return await sendMsg(cid, "❌ الطالب غير موجود.");
-        
-        await updateState(cid, { target_id: id });
-        const icon = user.status === 'banned' ? '🔴' : '🟢';
-        const msg = `${icon} <b>بيانات الطالب:</b>\n👤 اليوزر: <code>${user.username}</code>\n🔑 الباسورد: <code>${user.password}</code>\n📅 الانتهاء: ${user.expiry_date ? new Date(user.expiry_date).toLocaleDateString() : 'غير محدد'}`;
-        
-        const kb = [
-            [{ text: '🔑 تغيير الباسورد', callback_data: `ed_pass:${id}` }, { text: '⏳ تمديد الاشتراك', callback_data: `ed_dur:${id}` }],
-            [{ text: user.status === 'banned' ? '✅ رفع الحظر' : '🚫 حظر الطالب', callback_data: `ban:${id}` }, { text: '🗑️ حذف الطالب', callback_data: `del_st:${id}` }],
-            [{ text: '🔙 رجوع', callback_data: 'pg_st:0' }]
-        ];
-        return await sendMsg(cid, msg, kb, true);
-    }
-
-    if (data.startsWith('ls:')) {
-        const id = data.split(':')[1];
-        const { data: lesson } = await supabase.from('lessons').select('*').eq('id', id).single();
-        if (!lesson) return;
-        
-        await updateState(cid, { target_id: id, temp_data: lesson });
-        const kb = [
-            [{ text: '✏️ تعديل الدرس', callback_data: `ed_ls_pick:${id}` }],
-            [{ text: '🗑️ حذف الدرس', callback_data: `del_ls:${id}` }],
-            [{ text: '🔙 رجوع', callback_data: 'pg_ls:0' }]
-        ];
-        return await sendMsg(cid, `📖 <b>${lesson.title}</b>\n🔗 ${lesson.url}\n📝 <i>${lesson.description || 'لا يوجد وصف'}</i>`, kb, true);
-    }
-
-    if (data.startsWith('gen:')) {
-        const durType = data.split(':')[1]; // e.g. 1h, 1d, 30d, 365d
-        let label = durType;
-        if (durType === '30d') label = '1m';
-        if (durType === '365d') label = '1y';
-        if (durType === '1d') label = '1d';
-
-        // Map to duration_type used by site
-        const finalType = (durType === '30d' ? '1m' : (durType === '365d' ? '1y' : durType));
-
-        const code = Math.random().toString(36).substring(2, 10).toUpperCase();
-        await supabase.from('coupons').insert([{ 
-            code, 
-            duration_type: finalType
-        }]);
-        return await sendMsg(cid, `✅ تم توليد كود جديد:\n<code>${code}</code>\n⏳ المدة: ${finalType}`, getAdminKeyboard(cid, admins));
-    }
-
-    if (data.startsWith('ed_pass:')) {
-        await updateState(cid, { action: 'edit_user_pass', target_id: data.split(':')[1] });
-        return await sendMsg(cid, "🔑 أرسل <b>كلمة المرور الجديدة</b> للطالب:", getBackKeyboard());
-    }
-
-    if (data.startsWith('ed_dur:')) {
-        await updateState(cid, { action: 'edit_user_dur', target_id: data.split(':')[1] });
-        return await sendMsg(cid, "⏳ أرسل <b>عدد الأيام</b> للتمديد (مثال: 30):", getBackKeyboard());
-    }
-
-    if (data.startsWith('ban:')) {
-        const id = data.split(':')[1];
-        const { data: u } = await supabase.from('users').select('status').eq('id', id).single();
-        const newStatus = u.status === 'banned' ? 'active' : 'banned';
-        await supabase.from('users').update({ status: newStatus }).eq('id', id);
-        return await handleCallback(cid, `st:${id}`, config);
-    }
-
-    if (data.startsWith('del_st:')) {
-        await supabase.from('users').delete().eq('id', data.split(':')[1]);
-        return await sendMsg(cid, "✅ تم حذف الطالب نهائياً.", getAdminKeyboard(cid, admins));
-    }
-
-    if (data.startsWith('del_ls:')) {
-        await supabase.from('lessons').delete().eq('id', data.split(':')[1]);
-        return await sendMsg(cid, "✅ تم حذف الدرس بنجاح.", getAdminKeyboard(cid, admins));
-    }
-
-    if (data.startsWith('pg_st:')) await sendStudentsList(cid, parseInt(data.split(':')[1]));
-    if (data.startsWith('pg_ls:')) await sendLessonsList(cid, parseInt(data.split(':')[1]));
-
-    if (data.startsWith('act:')) {
-        const [, userId, dur] = data.split(':');
-        let days = 1;
-        if (dur === '1h') days = 0.04; // ~1 hour
-        else if (dur === '30d') days = 30;
-        else if (dur === '365d') days = 365;
-        
-        const expiry = new Date(Date.now() + (days * 24 * 60 * 60 * 1000)).toISOString();
-        await supabase.from('users').update({ expiry_date: expiry, status: 'active' }).eq('id', userId);
-        return await sendMsg(cid, `✅ تم تفعيل الاشتراك بنجاح.`);
-    }
-
-    if (data.startsWith('rep:')) {
-        const userId = data.split(':')[1];
-        await updateState(cid, { action: 'rep_st', target_id: userId });
-        return await sendMsg(cid, `✍️ أرسل رسالتك للرد على الطالب (ID: <code>${userId}</code>):`, getBackKeyboard());
-    }
-
-    if (data.startsWith('edit_adm:')) {
-        if (cid.toString() !== SUPER_ADMIN) return;
-        const targetId = data.split(':')[1];
-        await updateState(cid, { target_admin: targetId });
-        const perms = config.admins[targetId] || [];
-        let msg = `⚙️ <b>صلاحيات المسؤول:</b> (<code>${targetId}</code>)\nاختر لتفعيل/تعطيل:`;
-        const kb = Object.keys(PERMISSIONS).map(pk => [{ 
-            text: `${perms.includes(pk) ? '✅' : '❌'} ${PERMISSIONS[pk]}`, 
-            callback_data: `tog_adm:${targetId}:${pk}` 
-        }]);
-        kb.push([{ text: '🗑️ حذف المسؤول', callback_data: `rem_adm:${targetId}` }]);
-        kb.push([{ text: '🔙 رجوع', callback_data: 'admin_list' }]);
-        return await sendMsg(cid, msg, kb, true);
-    }
-
-    if (data.startsWith('tog_adm:')) {
-        if (cid.toString() !== SUPER_ADMIN) return;
-        const [, targetId, pk] = data.split(':');
-        const currentConfig = await getBotConfig();
-        const perms = currentConfig.admins[targetId] || [];
-        currentConfig.admins[targetId] = perms.includes(pk) ? perms.filter(p => p !== pk) : [...perms, pk];
-        await saveBotConfig(currentConfig);
-        return await handleCallback(cid, `edit_adm:${targetId}`, currentConfig);
-    }
-
-    if (data.startsWith('ed_ls_pick:')) {
-        await updateState(cid, { action: 'ed_ls_title', target_id: data.split(':')[1] });
-        return await sendMsg(cid, "✏️ تعديل الدرس\nأرسل <b>العنوان الجديد</b> (أو '-' للتخطي):", getBackKeyboard());
-    }
-
-    if (data.startsWith('cpn_view:')) {
-        const id = data.split(':')[1];
-        const { data: c } = await supabase.from('coupons').select('*').eq('id', id).single();
-        if (!c) return;
-        const label = c.duration_type || `${c.duration}${c.type === 'hours' ? 'h' : 'd'}`;
-        const kb = [
-            [{ text: '✏️ تعديل المدة', callback_data: `ed_cpn_dur:${id}` }],
-            [{ text: '🗑️ حذف الكود', callback_data: `del_cpn:${id}` }],
-            [{ text: '🔙 رجوع', callback_data: 'admin_dashboard' }]
-        ];
-        return await sendMsg(cid, `🎫 <b>بيانات الكود:</b>\n\nكود: <code>${c.code}</code>\nمدة: ${label}`, kb, true);
-    }
-
-    if (data.startsWith('ed_cpn_dur:')) {
-        await updateState(cid, { action: 'ed_cpn_dur', target_id: data.split(':')[1] });
-        return await sendMsg(cid, "⏳ أرسل <b>المدة الجديدة</b> (رقم):", getBackKeyboard());
-    }
-
-    if (data.startsWith('del_cpn:')) {
-        await supabase.from('coupons').delete().eq('id', data.split(':')[1]);
-        return await sendMsg(cid, "✅ تم حذف الكود بنجاح.", getAdminKeyboard(cid, config.admins || {}));
-    }
-
-    if (data.startsWith('rem_adm:')) {
-        if (cid.toString() !== SUPER_ADMIN) return;
-        const targetId = data.split(':')[1];
-        const freshConfig = await getBotConfig();
-        if (freshConfig.admins?.[targetId]) {
-            delete freshConfig.admins[targetId];
-            if (freshConfig.names?.[targetId]) delete freshConfig.names[targetId];
-            await saveBotConfig(freshConfig);
-        }
-        return await sendMsg(cid, "✅ تم حذف المسؤول بنجاح.", getAdminKeyboard(cid, freshConfig.admins || {}));
-    }
-
-    if (data === 'admin_list') {
-        const freshConfig = await getBotConfig();
-        const names = freshConfig.names || {};
-        const staff = Object.keys(freshConfig.admins || {});
-        const kb = staff.map(id => [{ text: `⚙️ ${names[id] || id}`, callback_data: `edit_adm:${id}` }]);
-        kb.push([{ text: '🔙 رجوع' }]);
-        return await sendMsg(cid, "📋 <b>قائمة المسؤولين:</b>", kb, true);
-    }
+function getMainKeyboard(cid, admins) {
+    const buttons = [];
+    if (hasPermission(cid, 'stats', admins)) buttons.push([PERMISSIONS.stats]);
+    if (hasPermission(cid, 'students', admins)) buttons.push([PERMISSIONS.students]);
+    if (hasPermission(cid, 'lessons', admins)) buttons.push([PERMISSIONS.lessons]);
+    if (hasPermission(cid, 'codes', admins)) buttons.push([PERMISSIONS.codes]);
+    if (cid === SUPER_ADMIN) buttons.push([PERMISSIONS.settings]);
+    return { keyboard: buttons, resize_keyboard: true };
 }
 
-// --- VERCEL HANDLER ---
+// --- UTILS ---
+function isAdmin(id, admins) { return admins.some(a => a.id === id); }
+function hasPermission(id, key, admins) {
+    if (id === SUPER_ADMIN) return true;
+    const admin = admins.find(a => a.id === id);
+    return admin?.permissions?.includes(key);
+}
 
-export default async function handler(req, res) {
-    if (req.method !== 'POST') return res.status(200).send('Bot is ready.');
-    
-    const body = req.body;
-    if (!body) return res.status(200).send('OK');
+const botStates = {};
+async function saveState(cid, data) { botStates[cid] = data; }
+async function getState(cid) { return botStates[cid]; }
+async function clearState(cid) { delete botStates[cid]; }
 
-    try {
-        const config = await getBotConfig();
-        const admins = config.admins || {};
-        const isAdmin = (id) => id?.toString() === SUPER_ADMIN || !!admins[id?.toString()];
-
-        if (body.message) {
-            const cid = body.message.chat.id;
-            const text = body.message.text;
-            const state = config.sessions?.[cid.toString()] || {};
-
-            // Track user
-            if (!config.all_users) config.all_users = [];
-            const isNew = !config.all_users.map(String).includes(cid.toString());
-            if (isNew) {
-                config.all_users.push(cid);
-                await saveBotConfig(config);
-                const uname = body.message.from.first_name || body.message.from.username || "مجهول";
-                const ik = [[{ text: '🕒 ساعة', callback_data: `act:${cid}:1h` }, { text: '📅 يوم', callback_data: `act:${cid}:1d` }], [{ text: '📅 شهر', callback_data: `act:${cid}:30d` }]];
-                await notifyAdmins(`🔔 <b>مستخدم جديد انضم للبوت!</b>\n👤 الاسم: ${uname}\n🆔 المعرف: <code>${cid}</code>`, ik);
-            }
-
-            // Student Account Linking (if sending a word)
-            if (!isAdmin(cid) && text && text.length > 2 && !text.includes(' ')) {
-                const { data: user } = await supabase.from('users').select('id, username').eq('username', text.toLowerCase()).maybeSingle();
-                if (user) {
-                    await supabase.from('users').update({ telegram_id: cid.toString() }).eq('id', user.id);
-                    return await sendMsg(cid, `✅ تم ربط حسابك بنجاح يا <b>${user.username}</b>!`);
-                }
-            }
-
-            if (isAdmin(cid)) {
-                await handleAdmin(cid, text, state, config);
-            } else {
-                await handleStudent(cid, text, state, config);
-            }
-        } else if (body.callback_query) {
-            const cid = body.callback_query.from.id;
-            const data = body.callback_query.data;
-            await tg('answerCallbackQuery', { callback_query_id: body.callback_query.id });
-            await handleCallback(cid, data, config);
-        }
-
-    } catch (error) {
-        console.error("WEBHOOK ERROR:", error);
-    }
-
-    return res.status(200).send('OK');
+// Define atob/btoa for Node.js if missing
+if (typeof atob === 'undefined') {
+    global.atob = (str) => Buffer.from(str, 'base64').toString('binary');
+    global.btoa = (str) => Buffer.from(str, 'binary').toString('base64');
 }
