@@ -142,8 +142,16 @@ async function sendMsg(cid, text, keyboard = null, isInline = false) {
 async function handleAdmin(cid, text, state, config) {
     const admins = config.admins || {};
     
+    // Debug Logs
+    console.log(`[ADMIN_MSG] CID: ${cid}, Text: "${text}", Action: ${state.action}`);
+
+    // Help for finding ID
+    if (text === '/myid') {
+        return await sendMsg(cid, `🆔 معرف التليجرام الخاص بك: <code>${cid}</code>`);
+    }
+
     // Main Commands
-    if (text === '/start' || text === '🏠 الرئيسية' || text === '🔙 العودة للقائمة الرئيسية') {
+    if (text === '/start' || text === '🏠 الرئيسية' || text === '🔙 العودة للقائمة الرئيسية' || text === '🔙 رجوع' || text === '🔙 إلغاء') {
         await clearState(cid);
         return await sendMsg(cid, "🏠 <b>لوحة تحكم Doma AI</b>\nأهلاً بك يا أدمن. اختر من الخيارات أدناه:", getAdminKeyboard(cid, admins));
     }
@@ -257,13 +265,15 @@ async function handleAdmin(cid, text, state, config) {
         return await sendMsg(cid, "👤 أرسل <b>Telegram ID</b> للشخص المراد إضافته:", getBackKeyboard());
     }
 
-    if (text === '📋 قائمة المسؤولين' && cid.toString() === SUPER_ADMIN) {
-        const config = await getBotConfig();
-        const names = config.names || {};
-        const staff = Object.keys(config.admins || {});
+    if (text.includes('قائمة المسؤولين') && cid.toString() === SUPER_ADMIN) {
+        const freshConfigForList = await getBotConfig();
+        const names = freshConfigForList.names || {};
+        const staff = Object.keys(freshConfigForList.admins || {});
         let msg = "📋 <b>قائمة المسؤولين:</b>\n\n";
+        if (staff.length === 0) msg += "❌ لا يوجد مسؤولون مضافون حالياً.";
+        
         const kb = staff.map(id => [{ text: `⚙️ ${names[id] || id}`, callback_data: `edit_adm:${id}` }]);
-        kb.push([{ text: '🔙 رجوع' }]);
+        kb.push([{ text: '🔙 رجوع', callback_data: 'admin_dashboard' }]);
         return await sendMsg(cid, msg, kb, true);
     }
 
