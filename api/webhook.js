@@ -240,8 +240,9 @@ async function handleAdmin(cid, text, state, config) {
         const { data: codes } = await supabase.from('coupons').select('*').order('created_at', { ascending: false }).limit(20);
         if (!codes?.length) return await sendMsg(cid, "❌ لا توجد أكواد حالياً.", getAdminKeyboard(cid, admins));
         let msg = "🏷️ <b>أحدث 20 كود:</b>\n\n";
-        codes.forEach(c => msg += `• <code>${c.code}</code> (${c.duration}${c.type === 'hours' ? 'س' : 'ي'})\n`);
-        return await sendMsg(cid, msg, getAdminKeyboard(cid, admins));
+        const kb = codes.map(c => [{ text: `🎫 ${c.code} (${c.duration}${c.type === 'hours' ? 'س' : 'ي'})`, callback_data: `cpn_view:${c.id}` }]);
+        kb.push([{ text: '🔙 رجوع' }]);
+        return await sendMsg(cid, msg, kb, true);
     }
 
     // Super Admin Config
@@ -280,9 +281,15 @@ async function handleAdmin(cid, text, state, config) {
                 return await sendMsg(cid, `✅ العنوان: ${text}\nأرسل الآن <b>رابط الفيديو:</b>`, getBackKeyboard());
             
             case 'add_lesson_url':
-                const lessonData = { ...(state.temp_data || {}), url: text, created_at: new Date().toISOString() };
-                await supabase.from('lessons').insert([lessonData]);
+                await updateState(cid, { action: 'add_lesson_desc', temp_data: { ...(state.temp_data || {}), url: text } });
+                return await sendMsg(cid, "📝 أرسل الآن <b>وصف الدرس</b> (اختياري، أرسل '-' لتخطيه):", getBackKeyboard());
+            
+            case 'add_lesson_desc':
+                const desc = text === '-' ? '' : text;
+                const lessonData = { ...(state.temp_data || {}), description: desc, created_at: new Date().toISOString() };
+                const { data: newLessonRec, error: lessonErr } = await supabase.from('lessons').insert([lessonData]).select();
                 await clearState(cid);
+                if (lessonErr) return await sendMsg(cid, "❌ فشل إضافة الدرس. حاول مرة أخرى.", getAdminKeyboard(cid, admins));
                 await notifyAdmins(`🆕 <b>تم إضافة درس جديد:</b>\n📖 ${lessonData.title}`);
                 return await sendMsg(cid, "✅ تم إضافة الدرس بنجاح!", getAdminKeyboard(cid, admins));
                 
@@ -331,13 +338,43 @@ async function handleAdmin(cid, text, state, config) {
                 return await sendMsg(cid, "✅ تم تحديث إعلان الموقع بنجاح!", getAdminKeyboard(cid, admins));
 
             case 'add_admin_id':
-                const newAdminId = text.trim();
-                const newConfig = await getBotConfig();
-                if (!newConfig.admins) newConfig.admins = {};
-                newConfig.admins[newAdminId] = [];
-                await saveBotConfig(newConfig);
+                const aid = text.trim();
+                await updateState(cid, { action: 'add_admin_name', target_admin: aid });
+                return await sendMsg(cid, `✅ تم تحديد المعرف: <code>${aid}</code>\nأرسل الآن <b>اسم المسؤول</b> (لعرضه في القائمة):`, getBackKeyboard());
+
+            case 'add_admin_name':
+                const targetAid = state.target_admin;
+                const adminName = text.trim();
+                const freshConfig = await getBotConfig();
+                if (!freshConfig.admins) freshConfig.admins = {};
+                if (!freshConfig.names) freshConfig.names = {};
+                freshConfig.admins[targetAid] = [];
+                freshConfig.names[targetAid] = adminName;
+                await saveBotConfig(freshConfig);
                 await clearState(cid);
-                return await sendMsg(cid, `✅ تمت إضافة <b>${newAdminId}</b> كمسؤول بنجاح.`, getAdminKeyboard(cid, admins));
+                return await sendMsg(cid, `✅ تمت إضافة <b>${adminName}</b> (@${targetAid}) كمسؤول بنجاح.`, getAdminKeyboard(cid, admins));
+
+            case 'ed_ls_title':
+                await updateState(cid, { action: 'ed_ls_url', temp_data: { ...(state.temp_data || {}), title: text } });
+                return await sendMsg(cid, `✅ العنوان الجديد: ${text}\nأرسل الآن <b>الرابط الجديد</b> (أو أرسل '-' لتخطيه):`, getBackKeyboard());
+            
+            case 'ed_ls_url':
+                const newUrl = text === '-' ? state.temp_data.url : text;
+                await updateState(cid, { action: 'ed_ls_desc', temp_data: { ...state.temp_data, url: newUrl } });
+                return await sendMsg(cid, `✅ الرابط: ${newUrl}\nأرسل الآن <b>الوصف الجديد</b> (أو أرسل '-' لتخطيه):`, getBackKeyboard());
+
+            case 'ed_ls_desc':
+                const newDesc = text === '-' ? state.temp_data.description : text;
+                await supabase.from('lessons').update({ title: state.temp_data.title, url: state.temp_data.url, description: newDesc }).eq('id', state.target_id);
+                await clearState(cid);
+                return await sendMsg(cid, "✅ تم تحديث الدرس بنجاح!", getAdminKeyboard(cid, admins));
+
+            case 'ed_cpn_dur':
+                const newCpnDur = parseInt(text);
+                if (isNaN(newCpnDur)) return await sendMsg(cid, "❌ يرجى إرسال رقم صحيح.");
+                await supabase.from('coupons').update({ duration: newCpnDur }).eq('id', state.target_id);
+                await clearState(cid);
+                return await sendMsg(cid, `✅ تم تحديث مدة الكود لـ <b>${newCpnDur}</b>.`, getAdminKeyboard(cid, admins));
 
             case 'edit_user_pass':
                 await supabase.from('users').update({ password: text }).eq('id', state.target_id);
@@ -394,7 +431,7 @@ async function handleStudent(cid, text, state, config) {
 // --- HELPER LOGIC ---
 
 async function sendStudentsList(cid, page) {
-    const { data: users } = await supabase.from('users').select('*').neq('role', 'system').order('created_at', { ascending: false });
+    const { data: users } = await supabase.from('users').select('*').neq('role', 'system').neq('role', 'admin').order('created_at', { ascending: false });
     const pageSize = 10;
     const start = page * pageSize;
     const slice = users.slice(start, start + pageSize);
@@ -482,8 +519,13 @@ async function handleCallback(cid, data, config) {
         const { data: lesson } = await supabase.from('lessons').select('*').eq('id', id).single();
         if (!lesson) return;
         
-        const kb = [[{ text: '🗑️ حذف الدرس', callback_data: `del_ls:${id}` }], [{ text: '🔙 رجوع', callback_data: 'pg_ls:0' }]];
-        return await sendMsg(cid, `📖 <b>${lesson.title}</b>\n🔗 ${lesson.url}`, kb, true);
+        await updateState(cid, { target_id: id, temp_data: lesson });
+        const kb = [
+            [{ text: '✏️ تعديل الدرس', callback_data: `ed_ls_pick:${id}` }],
+            [{ text: '🗑️ حذف الدرس', callback_data: `del_ls:${id}` }],
+            [{ text: '🔙 رجوع', callback_data: 'pg_ls:0' }]
+        ];
+        return await sendMsg(cid, `📖 <b>${lesson.title}</b>\n🔗 ${lesson.url}\n📝 <i>${lesson.description || 'لا يوجد وصف'}</i>`, kb, true);
     }
 
     if (data.startsWith('gen:')) {
@@ -569,6 +611,33 @@ async function handleCallback(cid, data, config) {
         currentConfig.admins[targetId] = perms.includes(pk) ? perms.filter(p => p !== pk) : [...perms, pk];
         await saveBotConfig(currentConfig);
         return await handleCallback(cid, `edit_adm:${targetId}`, currentConfig);
+    }
+
+    if (data.startsWith('ed_ls_pick:')) {
+        await updateState(cid, { action: 'ed_ls_title', target_id: data.split(':')[1] });
+        return await sendMsg(cid, "✏️ تعديل الدرس\nأرسل <b>العنوان الجديد</b> (أو '-' للتخطي):", getBackKeyboard());
+    }
+
+    if (data.startsWith('cpn_view:')) {
+        const id = data.split(':')[1];
+        const { data: c } = await supabase.from('coupons').select('*').eq('id', id).single();
+        if (!c) return;
+        const kb = [
+            [{ text: '✏️ تعديل المدة', callback_data: `ed_cpn_dur:${id}` }],
+            [{ text: '🗑️ حذف الكود', callback_data: `del_cpn:${id}` }],
+            [{ text: '🔙 رجوع', callback_data: 'pg_ls:0' }] // Just returning to a stable state
+        ];
+        return await sendMsg(cid, `🎫 <b>بيانات الكود:</b>\n\nكود: <code>${c.code}</code>\nمدة: ${c.duration} ${c.type === 'hours' ? 'ساعة' : 'يوم'}`, kb, true);
+    }
+
+    if (data.startsWith('ed_cpn_dur:')) {
+        await updateState(cid, { action: 'ed_cpn_dur', target_id: data.split(':')[1] });
+        return await sendMsg(cid, "⏳ أرسل <b>المدة الجديدة</b> (رقم):", getBackKeyboard());
+    }
+
+    if (data.startsWith('del_cpn:')) {
+        await supabase.from('coupons').delete().eq('id', data.split(':')[1]);
+        return await sendMsg(cid, "✅ تم حذف الكود بنجاح.", getAdminKeyboard(cid, config.admins || {}));
     }
 
     if (data === 'admin_list') {
