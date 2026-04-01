@@ -258,7 +258,10 @@ async function handleAdmin(cid, text, state, config) {
         const { data: codes } = await supabase.from('coupons').select('*').order('created_at', { ascending: false }).limit(20);
         if (!codes?.length) return await sendMsg(cid, "❌ لا توجد أكواد حالياً.", getAdminKeyboard(cid, admins));
         let msg = "🏷️ <b>أحدث 20 كود:</b>\n\n";
-        const kb = codes.map(c => [{ text: `🎫 ${c.code} (${c.duration}${c.type === 'hours' ? 'س' : 'ي'})`, callback_data: `cpn_view:${c.id}` }]);
+        const kb = codes.map(c => {
+            let label = c.duration_type || `${c.duration}${c.type === 'hours' ? 'h' : 'd'}`;
+            return [{ text: `🎫 ${c.code} (${label})`, callback_data: `cpn_view:${c.id}` }];
+        });
         kb.push([{ text: '🔙 رجوع' }]);
         return await sendMsg(cid, msg, kb, true);
     }
@@ -400,11 +403,23 @@ async function handleAdmin(cid, text, state, config) {
                 return await sendMsg(cid, "✅ تم تحديث الدرس بنجاح!", getAdminKeyboard(cid, admins));
 
             case 'ed_cpn_dur':
-                const newCpnDur = parseInt(text);
-                if (isNaN(newCpnDur)) return await sendMsg(cid, "❌ يرجى إرسال رقم صحيح.");
-                await supabase.from('coupons').update({ duration: newCpnDur }).eq('id', state.target_id);
+                const num = parseInt(text);
+                if (isNaN(num)) return await sendMsg(cid, "❌ يرجى إرسال رقم صحيح.");
+                
+                // Map number to duration_type (heuristic)
+                let dType = `${num}d`;
+                if (num === 30) dType = '1m';
+                if (num === 180) dType = '6m';
+                if (num === 365) dType = '1y';
+
+                await supabase.from('coupons').update({ 
+                    duration: num, 
+                    type: 'days',
+                    duration_type: dType 
+                }).eq('id', state.target_id);
+                
                 await clearState(cid);
-                return await sendMsg(cid, `✅ تم تحديث مدة الكود لـ <b>${newCpnDur}</b>.`, getAdminKeyboard(cid, admins));
+                return await sendMsg(cid, `✅ تم تحديث مدة الكود لـ <b>${dType}</b>.`, getAdminKeyboard(cid, admins));
 
             case 'edit_user_pass':
                 await supabase.from('users').update({ password: text }).eq('id', state.target_id);
@@ -559,14 +574,22 @@ async function handleCallback(cid, data, config) {
     }
 
     if (data.startsWith('gen:')) {
-        const dur = data.split(':')[1];
-        let d = 1, t = 'days';
-        if (dur === '1h') t = 'hours';
-        else d = parseInt(dur);
+        const durType = data.split(':')[1]; // e.g. 1h, 1d, 30d, 365d
+        let label = durType;
+        if (durType === '30d') label = '1m';
+        if (durType === '365d') label = '1y';
+        if (durType === '1d') label = '1d';
+
+        // Map to duration_type used by site
+        const finalType = (durType === '30d' ? '1m' : (durType === '365d' ? '1y' : durType));
 
         const code = Math.random().toString(36).substring(2, 10).toUpperCase();
-        await supabase.from('coupons').insert([{ code, duration: d, type: t, created_at: new Date().toISOString() }]);
-        return await sendMsg(cid, `✅ تم توليد كود جديد:\n<code>${code}</code>\n⏳ ${d} ${t === 'hours' ? 'ساعة' : 'يوم'}`, getAdminKeyboard(cid, admins));
+        await supabase.from('coupons').insert([{ 
+            code, 
+            duration_type: finalType,
+            created_at: new Date().toISOString() 
+        }]);
+        return await sendMsg(cid, `✅ تم توليد كود جديد:\n<code>${code}</code>\n⏳ المدة: ${finalType}`, getAdminKeyboard(cid, admins));
     }
 
     if (data.startsWith('ed_pass:')) {
@@ -652,12 +675,13 @@ async function handleCallback(cid, data, config) {
         const id = data.split(':')[1];
         const { data: c } = await supabase.from('coupons').select('*').eq('id', id).single();
         if (!c) return;
+        const label = c.duration_type || `${c.duration}${c.type === 'hours' ? 'h' : 'd'}`;
         const kb = [
             [{ text: '✏️ تعديل المدة', callback_data: `ed_cpn_dur:${id}` }],
             [{ text: '🗑️ حذف الكود', callback_data: `del_cpn:${id}` }],
-            [{ text: '🔙 رجوع', callback_data: 'pg_ls:0' }] // Just returning to a stable state
+            [{ text: '🔙 رجوع', callback_data: 'admin_dashboard' }]
         ];
-        return await sendMsg(cid, `🎫 <b>بيانات الكود:</b>\n\nكود: <code>${c.code}</code>\nمدة: ${c.duration} ${c.type === 'hours' ? 'ساعة' : 'يوم'}`, kb, true);
+        return await sendMsg(cid, `🎫 <b>بيانات الكود:</b>\n\nكود: <code>${c.code}</code>\nمدة: ${label}`, kb, true);
     }
 
     if (data.startsWith('ed_cpn_dur:')) {
