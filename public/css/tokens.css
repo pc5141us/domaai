@@ -1,0 +1,95 @@
+:root {
+    /* --- M3 Color Palette (Vibrant Dark Theme Focus) --- */
+    --primary: #7C4DFF;
+    --on-primary: #FFFFFF;
+    --primary-container: #311B92;
+    --on-primary-container: #D1C4E9;
+
+    --secondary: #00B0FF;
+    --on-secondary: #000000;
+    --secondary-container: #004D40;
+    --on-secondary-container: #B2DFDB;
+
+    --tertiary: #FF4081;
+    --on-tertiary: #FFFFFF;
+
+    --error: #F2B8B5;
+    --on-error: #601410;
+
+    --background: #1C1B1F;
+    --on-background: #E6E1E5;
+    --surface: #1C1B1F;
+    --on-surface: #E6E1E5;
+    --surface-variant: #49454F;
+    --on-surface-variant: #CAC4D0;
+    --outline: #938F99;
+
+    /* --- Glassmorphism Accents --- */
+    --glass-bg: rgba(255, 255, 255, 0.05);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-blur: 4px;
+
+    /* --- Shadows & Glows --- */
+    --glow-primary: 0 0 20px rgba(208, 188, 255, 0.3);
+    --shadow-elevated: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+
+    /* --- Shapes --- */
+    --radius-xl: 28px;
+    --radius-l: 16px;
+    --radius-m: 12px;
+    --radius-full: 1000px;
+}
+
+/* Animations */
+@keyframes mesh-gradient {
+    0% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+.premium-bg {
+    position: relative;
+    background: #1C1B1F;
+    overflow-x: hidden;
+}
+
+.premium-bg::before {
+    content: '';
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(-45deg, #1C1B1F, #4A148C, #0D47A1, #311B92);
+    background-size: 200% 200%;
+    animation: mesh-gradient 30s ease-in-out infinite;
+    z-index: -1;
+    will-change: transform;
+    transform: translateZ(0); /* Hardware Acceleration */
+    pointer-events: none;
+    opacity: 0.6; /* Reduced opacity for better contrast */
+}
+
+/* Optimize for Mobile: Make background static and fixed */
+@media (max-width: 768px) {
+    .premium-bg::before {
+        background: linear-gradient(-45deg, #1C1B1F, #311B92, #001A4D);
+        background-size: cover;
+        background-position: center;
+        animation: none !important; /* Disable movement/animation */
+        position: fixed;
+        inset: 0; /* Ensures full coverage (top, left, bottom, right 0) */
+        width: 100%;
+        height: 100%;
+        transform: none !important;
+        will-change: auto;
+    }
+}
