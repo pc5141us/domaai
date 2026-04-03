@@ -310,7 +310,9 @@ const App = {
         const hasOverlay = document.querySelector('.md-dialog-overlay--active');
         const hasSelection = window.getSelection().toString().length > 0;
 
-        if (!isTyping && !isWatching && !hasOverlay && !hasSelection) {
+        const isDrawerOpen = document.getElementById('v3-mobile-drawer')?.classList.contains('active');
+
+        if (!isTyping && !isWatching && !hasOverlay && !hasSelection && !isDrawerOpen) {
             if (Store.state.view === 'dashboard') {
                 this.updateDashboardParts();
             } else {
@@ -430,16 +432,21 @@ const App = {
             document.body.appendChild(drawer);
         }
 
-        drawer.innerHTML = `
-            <div class="mobile-drawer-overlay" onclick="App.toggleMobileMenu(false)"></div>
-            <div class="mobile-drawer">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px;">
-                    <div class="logo display-font" style="font-size: 20px; font-weight: 700;" onclick="App.handleLogoClick(); App.toggleMobileMenu(false)">DOMA<span style="color: var(--primary);"> AI</span></div>
-                    <div class="material-icons" style="cursor: pointer;" onclick="App.toggleMobileMenu(false)">close</div>
+        // Only update drawer contents if it's NOT open to prevent UI glitches (flickering/disappearing)
+        // or if it's completely empty
+        const isDrawerOpen = drawer.classList.contains('active');
+        if (!isDrawerOpen || !drawer.innerHTML.trim()) {
+            drawer.innerHTML = `
+                <div class="mobile-drawer-overlay" onclick="App.toggleMobileMenu(false)"></div>
+                <div class="mobile-drawer">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px;">
+                        <div class="logo display-font" style="font-size: 20px; font-weight: 700;" onclick="App.handleLogoClick(); App.toggleMobileMenu(false)">DOMA<span style="color: var(--primary);"> AI</span></div>
+                        <div class="material-icons" style="cursor: pointer;" onclick="App.toggleMobileMenu(false)">close</div>
+                    </div>
+                    <div id="mobile-drawer-links" style="display: flex; flex-direction: column; gap: 20px;"></div>
                 </div>
-                <div id="mobile-drawer-links" style="display: flex; flex-direction: column; gap: 20px;"></div>
-            </div>
-        `;
+            `;
+        }
 
         const drawerLinks = document.getElementById('mobile-drawer-links');
         if (drawerLinks) {
