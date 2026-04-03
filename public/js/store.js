@@ -44,7 +44,7 @@ const Store = {
                     message: message
                 })
             });
-        } catch(e) { console.error('Bot Broadcast Error:', e); }
+        } catch (e) { console.error('Bot Broadcast Error:', e); }
     },
 
     async init() {
@@ -82,7 +82,7 @@ const Store = {
             this.refreshData().then(({ changed, type }) => {
                 if (changed && window.App) {
                     window.App.smartRender();
-                    
+
                     // Specific Notifications for Students
                     if (this.state.currentUser && this.state.currentUser.role !== 'admin') {
                         if (type === 'lessons' && payload.eventType === 'INSERT') {
@@ -307,7 +307,7 @@ const Store = {
         // Find existing or create new
         const rawData = await DB.getData();
         let announceUser = rawData.users?.find(u => u.username === 'ANNOUNCEMENT_DATA');
-        
+
         if (announceUser) {
             const result = await DB.updateUser(announceUser.id, { password: text });
             if (result.success) {
@@ -584,7 +584,7 @@ const Store = {
             // Replace local ID with Supabase ID (at the top)
             this.state.lessons.unshift(result.data);
             const platformUrl = window.location.origin;
-            await this.broadcastBot(`📚 <b>درس جديد بانتظارك في المنصة!</b>\n\n📖 العنوان: <b>${title}</b>\n${desc ? `📝 الوصف: ${desc}\n` : ''}\n🌐 <a href="${platformUrl}">اضغط هنا لمشاهدة الدرس الآن</a>`);
+            await this.broadcastBot(`📚 <b>درس جديد بانتظارك في المنصة!</b>\n\n📖 العنوان: <b>${title}</b>\n\n🌐 <a href="${platformUrl}">اضغط هنا لمشاهدة الدرس الآن</a>`);
         }
         return result;
     },
