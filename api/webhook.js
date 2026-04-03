@@ -149,15 +149,22 @@ async function sendMsg(text, ik = null, kb = null, targetChatId = null) {
     const cid = targetChatId || SUPER_ADMIN;
     const p = { chat_id: cid, text, parse_mode: 'HTML' };
     
-    // إذا مررنا ik (Inline) سنقوم بتحويله إلى kb (Reply) بناءً على رغبة المستخدم
+    let finalKb = null;
     if (ik) {
-        const rows = ik.map(row => row.map(btn => ({ text: btn.text })));
-        p.reply_markup = { keyboard: rows, resize_keyboard: true };
+        finalKb = ik.map(row => row.map(btn => ({ text: btn.text })));
+        if (kb && Array.isArray(kb)) {
+            finalKb = [...finalKb, ...kb];
+        }
     } else if (kb) {
-        p.reply_markup = { keyboard: kb, resize_keyboard: true };
+        finalKb = kb;
     } else if (isAdmin(cid)) {
-        p.reply_markup = { keyboard: mainKb(cid), resize_keyboard: true };
+        finalKb = mainKb(cid);
     }
+
+    if (finalKb) {
+        p.reply_markup = { keyboard: finalKb, resize_keyboard: true };
+    }
+    
     await tg('sendMessage', p);
 }
 
@@ -351,7 +358,7 @@ async function handleMessage(text, chatId = null) {
         if (chatId.toString() !== SUPER_ADMIN.toString()) return sendMsg("⚠️ اعتذار، هذه الصلاحية متوفرة للسوبر أدمن فقط.");
         return handleCallback(input === '➕ إضافة أدمن جديد' ? 'add_admin_start' : 'list_admins', chatId);
     }
-    if (input === '🔙 رجوع') {
+    if (input === '🔙 رجوع' || input === '🔙 إلغاء' || input === '🔙 العودة للقائمة الرئيسية') {
         const state = await getState(chatId);
         const action = state.action || '';
         
@@ -598,7 +605,7 @@ async function handleMessage(text, chatId = null) {
             state.tempDur = d;
             state.action = 'edit_coupon_type';
             await saveState(chatId, state);
-            return sendMsg(`⏳ المدة: <b>${d}</b>\nاختر نوع المدة:`, [[{text: '🕒 ساعة', callback_data: 'edit_coupon_type:hours'}, {text: '📅 يوم', callback_data: 'edit_coupon_type:days'}]], null, chatId);
+            return sendMsg(`⏳ المدة: <b>${d}</b>\nاختر نوع المدة:`, [[{text: '🕒 ساعة', callback_data: 'edit_coupon_type:hours'}, {text: '📅 يوم', callback_data: 'edit_coupon_type:days'}]], [[{ text: '🔙 رجوع' }]], chatId);
         }
 
         if (action === 'broadcast_mode') {
@@ -623,13 +630,13 @@ async function handleMessage(text, chatId = null) {
             state.tempText = input;
             state.action = 'site_ann_btn_text';
             await saveState(chatId, state);
-            return sendMsg(`📝 النص: <b>${input}</b>\nأرسل <b>نص الزر</b> (مثال: اشترك الآن) أو أرسل "بدون":`, null, null, chatId);
+            return sendMsg(`📝 النص: <b>${input}</b>\nأرسل <b>نص الزر</b> (مثال: اشترك الآن) أو أرسل "بدون":`, null, [[{ text: '🔙 رجوع' }]], chatId);
         }
         if (action === 'site_ann_btn_text') {
             state.tempBtn = input === 'بدون' ? '' : input;
             state.action = 'site_ann_url';
             await saveState(chatId, state);
-            return sendMsg(`🔘 الزر: <b>${state.tempBtn || 'بدون'}</b>\nأرسل <b>رابط الزر</b> (مثال: https://...) أو "بدون":`, null, null, chatId);
+            return sendMsg(`🔘 الزر: <b>${state.tempBtn || 'بدون'}</b>\nأرسل <b>رابط الزر</b> (مثال: https://...) أو "بدون":`, null, [[{ text: '🔙 رجوع' }]], chatId);
         }
         if (action === 'site_ann_url') {
             const url = input === 'بدون' ? '' : input;
@@ -650,7 +657,7 @@ async function handleMessage(text, chatId = null) {
             state.action = 'add_user_pass';
             state.tempName = uname;
             await saveState(chatId, state);
-            return sendMsg(`👤 الاسم: <code>${uname}</code>\n🔑 الآن أرسل <b>كلمة المرور</b> لهذا الطالب:`, null, [[{ text: '🔙 إلغاء' }]], chatId);
+            return sendMsg(`👤 الاسم: <code>${uname}</code>\n🔑 الآن أرسل <b>كلمة المرور</b> لهذا الطالب:`, null, [[{ text: '🔙 رجوع' }]], chatId);
         }
         if (action === 'add_user_pass') {
             const pass = input.trim().toLowerCase().replace(/[^\u0000-\u007F]/g, ''); // منع العربي وتحويل للصغير
@@ -660,7 +667,7 @@ async function handleMessage(text, chatId = null) {
             state.tempPass = pass;
             await saveState(chatId, state);
             const ik = [[{ text: '🕒 ساعة' }, { text: '📅 يوم' }], [{ text: '📅 30 يوم' }, { text: '📅 سنة' }]];
-            return sendMsg(`✅ تم حفظ كلمة المرور: <code>${pass}</code>\nاختر مدة التفعيل المبدئية للطالب:`, ik, null, chatId);
+            return sendMsg(`✅ تم حفظ كلمة المرور: <code>${pass}</code>\nاختر مدة التفعيل المبدئية للطالب:`, ik, [[{ text: '🔙 رجوع' }]], chatId);
         }
         if (action === 'add_user_dur') {
             let d = 1, t = 'days', ar = 'يوم';
@@ -737,18 +744,17 @@ async function handleMessage(text, chatId = null) {
             const ik = res.slice(0, 15).map(l => [{ text: `📖 ${l.title}`, callback_data: `lesson_info:${l.id}` }]);
             return sendMsg(`🔍 <b>نتائج البحث (${res.length}):</b>`, ik, null, chatId);
         }
-
         if (action === 'add_lesson_title') {
             state.tempTitle = input;
             state.action = 'add_lesson_url';
             await saveState(chatId, state);
-            return sendMsg(`📚 العنوان: <b>${input}</b>\nأرسل <b>رابط الدرس</b>:`, null, null, chatId);
+            return sendMsg(`📚 العنوان: <b>${input}</b>\nأرسل <b>رابط الدرس</b>:`, null, [[{ text: '🔙 رجوع' }]], chatId);
         }
         if (action === 'add_lesson_url') {
             state.tempUrl = input;
             state.action = 'add_lesson_desc';
             await saveState(chatId, state);
-            return sendMsg(`📝 أرسل <b>الوصف</b> (أو "لا يوجد"):`, null, null, chatId);
+            return sendMsg(`📝 أرسل <b>الوصف</b> (أو "لا يوجد"):`, null, [[{ text: '🔙 رجوع' }]], chatId);
         }
         if (action === 'add_lesson_desc') {
             await clearState(chatId);
@@ -759,16 +765,16 @@ async function handleMessage(text, chatId = null) {
         }
 
         if (action === 'edit_lesson_title') {
-            if (input !== 'نفسه') state.tempTitle = input;
+                if (input !== 'نفسه') state.tempTitle = input;
             state.action = 'edit_lesson_url';
             await saveState(chatId, state);
-            return sendMsg(`🔗 أرسل <b>الرابط الجديد</b>\n(أو "نفسه"):`, null, null, chatId);
+            return sendMsg(`🔗 أرسل <b>الرابط الجديد</b>\n(أو "نفسه"):`, null, [[{ text: '🔙 رجوع' }]], chatId);
         }
         if (action === 'edit_lesson_url') {
             if (input !== 'نفسه') state.tempUrl = input;
             state.action = 'edit_lesson_desc';
             await saveState(chatId, state);
-            return sendMsg(`📝 أرسل <b>الوصف الجديد</b>\n(أو "نفسه"):`, null, null, chatId);
+            return sendMsg(`📝 أرسل <b>الوصف الجديد</b>\n(أو "نفسه"):`, null, [[{ text: '🔙 رجوع' }]], chatId);
         }
         if (action === 'edit_lesson_desc') {
             await clearState(chatId);
@@ -815,7 +821,7 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
     }
     if (data === 'add_admin_start') {
         await saveState(cid, { action: 'add_admin_id' });
-        return sendMsg("👤 أرسل <b>Telegram ID</b> للأدمن الجديد:", null, [[{ text: '🔙 إلغاء' }]], cid);
+        return sendMsg("👤 أرسل <b>Telegram ID</b> للأدمن الجديد:", null, [[{ text: '🔙 رجوع' }]], cid);
     }
     if (data === 'list_admins') {
         const permsMap = await fetchAdmins();
@@ -950,8 +956,8 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
     }
 
     // 3. إدارة الطلاب
-    if (data === 'add_student') { await saveState(cid, { action: 'add_user_name' }); return sendMsg("👤 أرسل اسم الطالب الجديد:", null, null, cid); }
-    if (data === 'search_student') { await saveState(cid, { action: 'search_student' }); return sendMsg("🔍 أرسل اسم الطالب للبحث عنه:", null, null, cid); }
+    if (data === 'add_student') { await saveState(cid, { action: 'add_user_name' }); return sendMsg("👤 أرسل اسم الطالب الجديد:", null, [[{ text: '🔙 رجوع' }]], cid); }
+    if (data === 'search_student') { await saveState(cid, { action: 'search_student' }); return sendMsg("🔍 أرسل اسم الطالب للبحث عنه:", null, [[{ text: '🔙 رجوع' }]], cid); }
     if (data.startsWith('student_info:')) {
         const id = data.split(':')[1];
         const { data: user } = await supabase.from('users').select('*').eq('id', id).single();
@@ -980,8 +986,8 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
     }
 
     // 4. إدارة الدروس
-    if (data === 'add_lesson') { await saveState(cid, { action: 'add_lesson_title' }); return sendMsg("📚 أرسل عنوان الدرس الجديد:", null, null, cid); }
-    if (data === 'search_lesson') { await saveState(cid, { action: 'search_lesson' }); return sendMsg("🔍 أرسل عنوان الدرس للبحث عنه:", null, null, cid); }
+    if (data === 'add_lesson') { await saveState(cid, { action: 'add_lesson_title' }); return sendMsg("📚 أرسل عنوان الدرس الجديد:", null, [[{ text: '🔙 رجوع' }]], cid); }
+    if (data === 'search_lesson') { await saveState(cid, { action: 'search_lesson' }); return sendMsg("🔍 أرسل عنوان الدرس للبحث عنه:", null, [[{ text: '🔙 رجوع' }]], cid); }
     if (data.startsWith('lesson_info:')) {
         const id = data.split(':')[1];
         const { data: l } = await supabase.from('lessons').select('*').eq('id', id).single();
@@ -1039,7 +1045,7 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
         const [, id, step] = data.split(':');
         if (step === 'code') {
             await saveState(cid, { targetId: id, action: 'edit_coupon_code' });
-            return sendMsg("✏️ أرسل <b>النص الجديد</b> للكود:", null, null, cid);
+            return sendMsg("✏️ أرسل <b>النص الجديد</b> للكود:", null, [[{ text: '🔙 رجوع' }]], cid);
         }
         if (step === 'dur') {
             await saveState(cid, { targetId: id, action: 'edit_coupon_dur' });
