@@ -1,5 +1,5 @@
 /**
- * Modern LMS v3 - Modular State Management (v2.9.3)
+ * Modern LMS v3 - Modular State Management (v2.9.4)
  */
 
 const App = {
@@ -29,7 +29,7 @@ const App = {
     },
 
     async init() {
-        console.log('🚀 Doma AI v2.9.3 Initializing...');
+        console.log('🚀 Doma AI v2.9.4 Initializing...');
         await Store.init();
 
         // Inject Modals Container

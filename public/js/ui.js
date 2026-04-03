@@ -1,5 +1,5 @@
 /**
- * Modern LMS v3 - UI Components Library (v2.9.3)
+ * Modern LMS v3 - UI Components Library (v2.9.4)
  */
 
 const UI = {
