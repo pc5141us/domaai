@@ -821,40 +821,32 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
         const permsMap = await fetchAdmins();
         const ids = Object.keys(permsMap).filter(id => id !== SUPER_ADMIN);
         let msg = "📋 <b>إدارة الأدمنز:</b>\n\n👑 <b>أنت (Super Admin)</b>\n\n";
-        const ik = [];
+        const kb = [];
         for (const id of ids) {
             let name = null;
             const res = await tg('getChat', { chat_id: id });
             if (res.ok) name = res.result.first_name;
             msg += `• 👤 <b>${name || id}</b> (<code>${id}</code>)\n`;
-            ik.push([{ text: `⚙️ صلاحيات ${name || id} (${id})`, callback_data: `edit_perms:${id}` }]);
+            kb.push([{ text: `⚙️ صلاحيات ${name || id} (${id})` }]);
         }
-        ik.push([{ text: '➕ إضافة أدمن جديد', callback_data: 'add_admin_start' }]);
-        if (ids.length > 0) ik.push([{ text: '🧨 تصفير جميع الأدمنية', callback_data: 'system_reset_admins' }]);
-        ik.push([{ text: '🏠 القائمة الرئيسية', callback_data: 'main_menu' }]);
+        kb.push([{ text: '➕ إضافة أدمن جديد' }]);
+        if (ids.length > 0) kb.push([{ text: '🧨 تصفير جميع الأدمنية' }]);
+        kb.push([{ text: '🔙 العودة للقائمة الرئيسية' }]);
 
-        if (messageId) {
-            return tg('editMessageText', { chat_id: cid, message_id: messageId, text: msg, parse_mode: 'HTML', reply_markup: { inline_keyboard: ik } });
-        }
-        return tg('sendMessage', { chat_id: cid, text: msg, parse_mode: 'HTML', reply_markup: { inline_keyboard: ik } });
+        return sendMsg(msg, null, kb, cid);
     }
     if (data.startsWith('edit_perms:')) {
         const id = data.split(':')[1];
         const perms = CACHED_ADMINS_PERMS[id] || [];
         await saveState(cid, { action: 'editing_perms', targetId: id });
         let msg = `⚙️ <b>صلاحيات الأدمن:</b> (<code>${id}</code>)\nاختر الصلاحية لتبديل حالتها:`;
-        const ik = [];
+        const kb = [];
         Object.keys(PERMISSIONS_MAP).forEach(pk => {
             const has = perms.includes(pk);
-            ik.push([{ text: `${has ? '✅' : '❌'} ${PERMISSIONS_MAP[pk]}`, callback_data: `tog_perm:${id}:${pk}` }]);
+            kb.push([{ text: `${has ? '✅' : '❌'} ${PERMISSIONS_MAP[pk]}` }]);
         });
-        ik.push([{ text: '🗑️ حذف هذا الأدمن', callback_data: `conf_del_admin:${id}` }]);
-        ik.push([{ text: '🔙 العودة لقائمة الأدمنز', callback_data: 'list_admins' }]);
-
-        if (messageId) {
-            return tg('editMessageText', { chat_id: cid, message_id: messageId, text: msg, parse_mode: 'HTML', reply_markup: { inline_keyboard: ik } });
-        }
-        return tg('sendMessage', { chat_id: cid, text: msg, parse_mode: 'HTML', reply_markup: { inline_keyboard: ik } });
+        kb.push([{ text: '🗑️ حذف هذا الأدمن' }, { text: '🔙 رجوع' }]);
+        return sendMsg(msg, null, kb, cid);
     }
     if (data.startsWith('tog_perm:')) {
         const [, id, pk] = data.split(':');
