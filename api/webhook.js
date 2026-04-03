@@ -484,6 +484,17 @@ async function handleMessage(text, chatId = null) {
         const state = await getState(chatId);
         if (state.targetId) return handleCallback(`del_coupon:${state.targetId}`, chatId);
     }
+    if (input === '📢 إذاعة للطلاب') {
+        const state = await getState(chatId);
+        if (state.targetId) {
+            const { data: l } = await supabase.from('lessons').select('*').eq('id', state.targetId).single();
+            if (l) {
+                await broadcast(`📖 <b>تحديث في درس:</b>\n\nالعنوان: <b>${l.title}</b>\n${l.description ? `📝 ${l.description}` : ''}`);
+                return sendMsg("✅ تم إذاعة الدرس للطلاب بنجاح.", null, null, chatId);
+            }
+        }
+    }
+
     if (input === '✏️ تعديل الدرس') {
         const state = await getState(chatId);
         if (state.targetId) {
@@ -792,7 +803,7 @@ async function handleMessage(text, chatId = null) {
             const { data: newLesson } = await supabase.from('lessons').insert([{ title: state.tempTitle, url: state.tempUrl, description: desc, created_at: new Date().toISOString() }]).select().single();
             await broadcast(`📖 <b>درس جديد بانتظارك:</b>\n\nالعنوان: <b>${state.tempTitle}</b>`);
             await saveState(chatId, { targetId: newLesson.id.toString(), action: 'viewing_lesson' });
-            const kb = [[{ text: '✏️ تعديل الدرس' }, { text: '🗑️ حذف الدرس' }], [{ text: '🔙 رجوع' }]];
+            const kb = [[{ text: '✏️ تعديل الدرس' }, { text: '🗑️ حذف الدرس' }], [{ text: '📢 إذاعة للطلاب' }], [{ text: '🔙 رجوع' }]];
             return sendMsg(`✅ تم إضافة الدرس وإرسال تنبيه للطلاب!`, null, kb, chatId);
         }
 
@@ -800,13 +811,13 @@ async function handleMessage(text, chatId = null) {
             if (input !== 'نفسه') state.tempTitle = input;
             state.action = 'edit_lesson_url';
             await saveState(chatId, state);
-            return sendMsg(`🔗 أرسل <b>الرابط الجديد</b>\n(أو "نفسه"):`, null, [[{ text: '🔙 رجوع' }]], chatId);
+            return sendMsg(`🔗 أرسل <b>الرابط الجديد</b>\n(أو أرسل "نفسه" للمتابعة):`, null, [[{ text: 'نفسه' }], [{ text: '🔙 رجوع' }]], chatId);
         }
         if (action === 'edit_lesson_url') {
             if (input !== 'نفسه') state.tempUrl = input;
             state.action = 'edit_lesson_desc';
             await saveState(chatId, state);
-            return sendMsg(`📝 أرسل <b>الوصف الجديد</b>\n(أو "نفسه"):`, null, [[{ text: '🔙 رجوع' }]], chatId);
+            return sendMsg(`📝 أرسل <b>الوصف الجديد</b>\n(أو أرسل "نفسه" للمتابعة):`, null, [[{ text: 'نفسه' }], [{ text: '🔙 رجوع' }]], chatId);
         }
         if (action === 'edit_lesson_desc') {
             await clearState(chatId);
@@ -819,7 +830,7 @@ async function handleMessage(text, chatId = null) {
             };
             await supabase.from('lessons').update(upd).eq('id', state.targetId);
             await saveState(chatId, { targetId: state.targetId, action: 'viewing_lesson' });
-            const kb = [[{ text: '✏️ تعديل الدرس' }, { text: '🗑️ حذف الدرس' }], [{ text: '🔙 رجوع' }]];
+            const kb = [[{ text: '✏️ تعديل الدرس' }, { text: '🗑️ حذف الدرس' }], [{ text: '📢 إذاعة للطلاب' }], [{ text: '🔙 رجوع' }]];
             return sendMsg(`✅ تم تحديث الدرس!`, null, kb, chatId);
         }
 
@@ -1029,7 +1040,7 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
         const { data: l } = await supabase.from('lessons').select('*').eq('id', id).single();
         if (!l) return;
         await saveState(cid, { targetId: id, action: 'viewing_lesson' });
-        const kb = [[{ text: '✏️ تعديل الدرس' }, { text: '🗑️ حذف الدرس' }], [{ text: '🔙 رجوع' }]];
+        const kb = [[{ text: '✏️ تعديل الدرس' }, { text: '🗑️ حذف الدرس' }], [{ text: '📢 إذاعة للطلاب' }], [{ text: '🔙 رجوع' }]];
         return sendMsg(`📖 <b>${l.title}</b>\n🔗 ${l.url}\n📝 ${l.description || 'لا يوجد'}`, null, kb, cid);
     }
     if (data.startsWith('del_lesson:')) {
