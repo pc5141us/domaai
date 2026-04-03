@@ -361,21 +361,39 @@ async function handleMessage(text, chatId = null) {
     if (input === '🔙 رجوع' || input === '🔙 إلغاء' || input === '🔙 العودة للقائمة الرئيسية') {
         const state = await getState(chatId);
         const action = state.action || '';
-        
-        // العودة لآخر صفحة طلاب كان عليها الأدمن
-        if (state.last_student_page !== undefined && (action === 'viewing_student' || action.includes('user') || action.includes('student'))) {
-            return sendStudentsList(state.last_student_page, chatId);
-        }
-        // العودة لآخر صفحة دروس
-        if (state.last_lesson_page !== undefined && (action === 'viewing_lesson' || action.includes('lesson'))) {
-            return sendLessonsList(state.last_lesson_page, chatId);
+        const targetId = state.targetId;
+
+        // 1. حالات التعديل لشيء معين (نعود لصفحة معلومات هذا الشيء)
+        if (targetId) {
+            if (action.includes('user') || action.includes('student')) {
+                if (action === 'viewing_student') return sendStudentsList(state.last_student_page || 0, chatId);
+                return handleCallback(`student_info:${targetId}`, chatId);
+            }
+            if (action.includes('lesson')) {
+                if (action === 'viewing_lesson') return sendLessonsList(state.last_lesson_page || 0, chatId);
+                return handleCallback(`lesson_info:${targetId}`, chatId);
+            }
+            if (action.includes('coupon') || action.includes('code')) {
+                if (action === 'viewing_coupon') return handleCallback('manage_codes', chatId);
+                return handleCallback(`coupon_info:${targetId}`, chatId);
+            }
+            if (action.includes('admin') || action.includes('perms')) {
+                return handleCallback('list_admins', chatId);
+            }
         }
 
+        // 2. حالات الإضافة أو البحث أو البث (نعود للقائمة الخاصة بالقسم)
+        if (action.includes('student') || action.includes('user')) {
+             return sendStudentsList(state.last_student_page || 0, chatId);
+        }
+        if (action.includes('lesson')) {
+             return sendLessonsList(state.last_lesson_page || 0, chatId);
+        }
+        if (action.includes('site_ann')) {
+            return handleCallback('site_announcement', chatId);
+        }
         if (action.includes('coupon') || action.includes('code')) {
             return handleCallback('manage_codes', chatId);
-        }
-        if (action.includes('perms') || action === 'add_admin_id' || action.includes('admin')) {
-            return handleCallback('list_admins', chatId);
         }
         
         await clearState(chatId);
@@ -582,8 +600,8 @@ async function handleMessage(text, chatId = null) {
         if (action === 'edit_coupon_code') {
             await clearState(chatId);
             const newCode = input.toUpperCase().replace(/[^\u0000-\u007F]/g, '');
-            await supabase.from('coupons').update({ code: newCode }).eq('id', state.targetId);
-            return sendMsg(`✅ تم تغيير الكود بنجاح!\nالكود الجديد: <code>${newCode}</code>`, null, [[{text: '🔙 العودة للقائمة الرئيسية'}]], chatId);
+            const kb = [[{ text: '✏️ تعديل نص الكود' }, { text: '⏳ تعديل المدة' }], [{ text: '🗑️ حذف الكود' }, { text: '🔙 رجوع' }]];
+            return sendMsg(`✅ تم تغيير الكود بنجاح!\nالكود الجديد: <code>${newCode}</code>`, null, kb, chatId);
         }
         if (action === 'edit_coupon_dur') {
             let d = parseInt(input), t = 'days';
@@ -644,7 +662,8 @@ async function handleMessage(text, chatId = null) {
             await clearState(chatId);
             await updateSiteAnnouncement(announceObj);
             await broadcast(`🔔 <b>إعلان جديد في الموقع:</b>\n\n${state.tempText}`);
-            return sendMsg("✅ تم تحديث إعلان الموقع وإرسال تنبيه للطلاب!", null, null, chatId);
+            const kb = [[{ text: '📝 تعديل إعلان الموقع' }], [{ text: '🗑️ حذف إعلان الموقع' }], [{ text: '🔙 رجوع' }]];
+            return sendMsg("✅ تم تحديث إعلان الموقع وإرسال تنبيه للطلاب!", null, kb, chatId);
         }
 
         if (action === 'add_user_name') {
@@ -678,7 +697,7 @@ async function handleMessage(text, chatId = null) {
             const ms = t === 'hours' ? d * 3600000 : d * 24 * 3600000;
             const expiry = new Date(Date.now() + ms).toISOString();
 
-            await supabase.from('users').insert([{
+            const { data: newUser } = await supabase.from('users').insert([{
                 username: state.tempName,
                 password: state.tempPass,
                 role: 'student',
@@ -686,16 +705,18 @@ async function handleMessage(text, chatId = null) {
                 is_active: true,
                 expiry_date: expiry,
                 created_at: new Date().toISOString()
-            }]);
+            }]).select().single();
 
-            await clearState(chatId);
-            return sendMsg(`✅ تم إضافة الطالب وتفعيله بنجاح!\n👤 الاسم: <code>${state.tempName}</code>\n🔑 الباسورد: <code>${state.tempPass}</code>\n📅 ينتهي: ${new Date(expiry).toLocaleDateString()}`, null, null, chatId);
+            await saveState(chatId, { targetId: newUser.id.toString(), action: 'viewing_student' });
+            const kb = [[{ text: '⏳ تغيير مدة الاشتراك' }, { text: '🔑 تغيير كلمة المرور' }], [{ text: '🚫 حظر الطالب' }, { text: '🗑️ حذف الطالب' }], [{ text: '🔙 رجوع' }]];
+            return sendMsg(`✅ تم إضافة الطالب وتفعيله بنجاح!\n👤 الاسم: <code>${state.tempName}</code>\n🔑 الباسورد: <code>${state.tempPass}</code>\n📅 ينتهي: ${new Date(expiry).toLocaleDateString()}`, null, kb, chatId);
         }
         if (action === 'edit_user_pass_final') {
             const pass = input.trim().toLowerCase().replace(/[^\u0000-\u007F]/g, ''); // منع العربي وتحويل للصغير
-            await clearState(chatId);
             await supabase.from('users').update({ password: pass }).eq('id', state.targetId);
-            return sendMsg(`✅ تم تحديث كلمة مرور الطالب بنجاح إلى: <code>${pass}</code>`, null, null, chatId);
+            await saveState(chatId, { targetId: state.targetId, action: 'viewing_student' });
+            const kb = [[{ text: '⏳ تغيير مدة الاشتراك' }, { text: '🔑 تغيير كلمة المرور' }], [{ text: '🚫 حظر الطالب' }, { text: '🗑️ حذف الطالب' }], [{ text: '🔙 رجوع' }]];
+            return sendMsg(`✅ تم تحديث كلمة مرور الطالب بنجاح إلى: <code>${pass}</code>`, null, kb, chatId);
         }
 
         if (action === 'edit_user_dur_final') {
@@ -709,8 +730,9 @@ async function handleMessage(text, chatId = null) {
             const ms = t === 'hours' ? d * 3600000 : d * 24 * 3600000;
             const expiry = new Date(Date.now() + ms).toISOString();
             await supabase.from('users').update({ expiry_date: expiry, status: 'active', is_active: true }).eq('id', state.targetId);
-            await clearState(chatId);
-            return sendMsg(`✅ تم تحديث مدة الاشتراك بنجاح!\n📅 ينتهي في: ${new Date(expiry).toLocaleDateString()}`, null, null, chatId);
+            await saveState(chatId, { targetId: state.targetId, action: 'viewing_student' });
+            const kb = [[{ text: '⏳ تغيير مدة الاشتراك' }, { text: '🔑 تغيير كلمة المرور' }], [{ text: '🚫 حظر الطالب' }, { text: '🗑️ حذف الطالب' }], [{ text: '🔙 رجوع' }]];
+            return sendMsg(`✅ تم تحديث مدة الاشتراك بنجاح!\n📅 ينتهي في: ${new Date(expiry).toLocaleDateString()}`, null, kb, chatId);
         }
 
         if (action === 'search_student') {
@@ -759,9 +781,11 @@ async function handleMessage(text, chatId = null) {
         if (action === 'add_lesson_desc') {
             await clearState(chatId);
             const desc = input === 'لا يوجد' ? '' : input;
-            await supabase.from('lessons').insert([{ title: state.tempTitle, url: state.tempUrl, description: desc, created_at: new Date().toISOString() }]);
+            const { data: newLesson } = await supabase.from('lessons').insert([{ title: state.tempTitle, url: state.tempUrl, description: desc, created_at: new Date().toISOString() }]).select().single();
             await broadcast(`📖 <b>درس جديد بانتظارك:</b>\n\nالعنوان: <b>${state.tempTitle}</b>\n${desc ? `الوصف: ${desc}` : ''}`);
-            return sendMsg(`✅ تم إضافة الدرس وإرسال تنبيه للطلاب!`, null, null, chatId);
+            await saveState(chatId, { targetId: newLesson.id.toString(), action: 'viewing_lesson' });
+            const kb = [[{ text: '✏️ تعديل الدرس' }, { text: '🗑️ حذف الدرس' }], [{ text: '🔙 رجوع' }]];
+            return sendMsg(`✅ تم إضافة الدرس وإرسال تنبيه للطلاب!`, null, kb, chatId);
         }
 
         if (action === 'edit_lesson_title') {
@@ -786,7 +810,9 @@ async function handleMessage(text, chatId = null) {
                 description: input === 'نفسه' ? data.description : (input === 'لا يوجد' ? '' : input)
             };
             await supabase.from('lessons').update(upd).eq('id', state.targetId);
-            return sendMsg(`✅ تم تحديث الدرس!`, null, null, chatId);
+            await saveState(chatId, { targetId: state.targetId, action: 'viewing_lesson' });
+            const kb = [[{ text: '✏️ تعديل الدرس' }, { text: '🗑️ حذف الدرس' }], [{ text: '🔙 رجوع' }]];
+            return sendMsg(`✅ تم تحديث الدرس!`, null, kb, chatId);
         }
 
         if (action === 'replying_user') {
@@ -981,8 +1007,10 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
     }
     if (data.startsWith('del_user:')) {
         await supabase.from('users').delete().eq('id', data.split(':')[1]);
+        const lastPage = (await getState(cid)).last_student_page || 0;
         await clearState(cid);
-        return sendMsg(`✅ تم حذف الطالب بنجاح.`, null, null, cid);
+        await sendMsg(`✅ تم حذف الطالب بنجاح.`, null, null, cid);
+        return sendStudentsList(lastPage, cid);
     }
 
     // 4. إدارة الدروس
@@ -998,8 +1026,10 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
     }
     if (data.startsWith('del_lesson:')) {
         await supabase.from('lessons').delete().eq('id', data.split(':')[1]);
+        const lastPage = (await getState(cid)).last_lesson_page || 0;
         await clearState(cid);
-            return sendMsg(`✅ تم حذف الدرس بنجاح.`, null, null, cid);
+        await sendMsg(`✅ تم حذف الدرس بنجاح.`, null, null, cid);
+        return sendLessonsList(lastPage, cid);
     }
 
     // 5. إعدادات الموقع والأكواد
@@ -1062,13 +1092,16 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
         const state = await getState(cid);
         if (!state.targetId || !state.tempDur) return;
         await supabase.from('coupons').update({ duration: state.tempDur, type: type }).eq('id', state.targetId);
-        await clearState(cid);
-        return sendMsg("✅ تم تحديث مدة الكود بنجاح!", null, [[{ text: '🔙 العودة للقائمة الرئيسية' }]], cid);
+        await saveState(cid, { targetId: state.targetId, action: 'viewing_coupon' });
+        const kb = [[{ text: '✏️ تعديل نص الكود' }, { text: '⏳ تعديل المدة' }], [{ text: '🗑️ حذف الكود' }, { text: '🔙 رجوع' }]];
+        return sendMsg("✅ تم تحديث مدة الكود بنجاح!", null, kb, cid);
     }
     if (data.startsWith('del_coupon:')) {
         const id = data.split(':')[1];
         await supabase.from('coupons').delete().eq('id', id);
-        return sendMsg("✅ تم حذف الكود بنجاح.", null, [[{ text: '🔙 العودة للقائمة الرئيسية' }]], cid);
+        await clearState(cid);
+        await sendMsg("✅ تم حذف الكود بنجاح.", null, null, cid);
+        return handleCallback('manage_codes', cid);
     }
     if (data.startsWith('gen_code:')) {
         const dStr = data.split(':')[1];
@@ -1076,7 +1109,8 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
         if (dStr === '1h') { t = 'hours'; ar = 'ساعة'; } else if (dStr === '30d') { d = 30; } else if (dStr === '365d') { d = 365; }
         const code = Math.random().toString(36).substring(2, 10).toUpperCase();
         await supabase.from('coupons').insert([{ code, duration: d, type: t, created_at: new Date().toISOString() }]);
-        return sendMsg(`✅ تم توليد كود جديد:\n<code>${code}</code>\n⏳ ${d} ${ar}`, null, null, cid);
+        await sendMsg(`✅ تم توليد كود جديد:\n<code>${code}</code>\n⏳ ${d} ${ar}`, null, null, cid);
+        return handleCallback('manage_codes', cid);
     }
 
     if (data === 'cancel') { await clearState(cid); return sendMsg("تم الإلغاء والعودة للقائمة الرئيسية.", null, null, cid); }
