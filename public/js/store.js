@@ -583,7 +583,8 @@ const Store = {
         if (result.success) {
             // Replace local ID with Supabase ID (at the top)
             this.state.lessons.unshift(result.data);
-            await this.broadcastBot(`📖 <b>درس جديد بانتظارك:</b>\n\nالعنوان: <b>${title}</b>\n${desc ? `الوصف: ${desc}` : ''}`);
+            const platformUrl = window.location.origin;
+            await this.broadcastBot(`📚 <b>درس جديد بانتظارك في المنصة!</b>\n\n📖 العنوان: <b>${title}</b>\n${desc ? `📝 الوصف: ${desc}\n` : ''}\n🌐 <a href="${platformUrl}">اضغط هنا لمشاهدة الدرس الآن</a>`);
         }
         return result;
     },

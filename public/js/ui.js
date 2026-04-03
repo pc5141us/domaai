@@ -218,7 +218,7 @@ const UI = {
         return `
         <div class="container" style="padding-top: 100px; padding-bottom: 32px;">
             <div style="margin-bottom: 32px; display: flex; align-items: center; gap: 16px;">
-                <button class="btn-glass" style="width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center;" onclick="App.navigate('dashboard')">
+                <button class="btn-glass" style="width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center;" onclick="App.goBack()">
                     <span class="material-icons">arrow_back</span>
                 </button>
                 <div>
@@ -584,6 +584,32 @@ const UI = {
                 عرض المزيد (${sortedUsers.length - visibleLimit})
             </button>
         ` : '');
+    },
+
+    dialog(options) {
+        const { type = 'alert', message = '', icon = 'info', defaultValue = '' } = options;
+        const isPrompt = type === 'prompt';
+        const isConfirm = type === 'confirm' || isPrompt;
+        
+        return `
+            <div id="custom-dialog-overlay" class="md-dialog-overlay md-dialog-overlay--active" style="z-index: 9999;">
+                <div class="md-dialog glass-panel" style="max-width: 400px; width: 90%; padding: 32px; text-align: center;">
+                    <span class="material-icons" style="font-size: 48px; color: var(--primary); margin-bottom: 16px;">${icon}</span>
+                    <p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px; color: var(--on-surface);">${message}</p>
+                    
+                    ${isPrompt ? `
+                        <div class="input-field" style="margin-bottom: 24px;">
+                            <input type="text" id="dialog-prompt-field" value="${defaultValue}" style="text-align: center;">
+                        </div>
+                    ` : ''}
+                    
+                    <div style="display: flex; justify-content: center; gap: 12px;">
+                        ${isConfirm ? `<button id="dialog-cancel-btn" class="btn btn-glass" style="flex: 1;">إلغاء</button>` : ''}
+                        <button id="dialog-confirm-btn" class="btn btn-primary" style="flex: 1;">${isConfirm ? 'تأكيد' : 'حسناً'}</button>
+                    </div>
+                </div>
+            </div>
+        `;
     },
 
     modals() {

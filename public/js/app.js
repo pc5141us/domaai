@@ -148,6 +148,19 @@ const App = {
             return { id: videoId };
         },
 
+        getGumletId(url) {
+            if (!url) return null;
+            if (url.includes('gumlet.tv/watch/') || url.includes('gumlet.com/watch/')) {
+                const parts = url.split('/watch/');
+                return parts[1] ? parts[1].split('/')[0].split('?')[0].split('#')[0] : null;
+            }
+            if (url.includes('play.gumlet.io/embed/') || url.includes('play.gumlet.tv/embed/')) {
+                const parts = url.split('/embed/');
+                return parts[1] ? parts[1].split('/')[0].split('?')[0].split('#')[0] : null;
+            }
+            return null;
+        },
+
         formatTextWithLinks(text) {
             if (!text) return '';
             const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -222,7 +235,7 @@ const App = {
         } else if (view === 'register') {
             root.innerHTML = UI.register();
         } else if (view === 'lesson') {
-            const lesson = Store.state.lessons.find(l => l.id === Store.state.selectedLessonId);
+            const lesson = Store.state.lessons.find(l => l.id == Store.state.selectedLessonId);
             if (lesson) {
                 root.innerHTML = UI.lessonPage(lesson);
                 // Initialize video player after content is in DOM
@@ -256,6 +269,15 @@ const App = {
         }
     },
 
+    goBack() {
+        if (window.history.state) {
+            window.history.back();
+        } else {
+            const user = Store.state.currentUser;
+            this.navigate(user ? 'dashboard' : 'landing');
+        }
+    },
+
     navigate(view, data = null, isBack = false, replace = false) {
         // Save current scroll position
         const currentView = Store.state.view;
@@ -264,7 +286,8 @@ const App = {
 
         Store.state.view = view;
         if (view === 'lesson' && data) {
-            Store.state.selectedLessonId = data;
+            const numericId = Number(data);
+            Store.state.selectedLessonId = isNaN(numericId) ? data : numericId;
             Store.state.scrollPositions['lesson'] = 0;
         }
 
@@ -371,15 +394,7 @@ const App = {
     },
 
     handleLogoClick() {
-        if (Store.state.currentUser) {
-            this.navigate('dashboard');
-        } else {
-            this.navigate('landing');
-        }
-        // The original code had `if (view === 'login') { this.checkLoginPrefill(); }` here,
-        // but `view` is not defined in this scope. Assuming it was meant to be `App.currentView`
-        // or `Store.state.view` and should be removed or corrected if needed.
-        // For now, removing it as it's not part of the diff and is syntactically incorrect.
+        window.location.reload();
     },
 
     checkLoginPrefill() {
@@ -647,7 +662,6 @@ const App = {
         }
     },
 
-    // Video 
     playVideo(id) {
         this.navigate('lesson', id);
     },
@@ -741,9 +755,12 @@ const App = {
         if (url.includes('youtube.com') || url.includes('youtu.be')) {
             const ytMeta = this.utils.getYTMeta(url);
             const ytId = ytMeta.id;
-
             if (ytId) return `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg`;
         }
+
+        // Gumlet Thumbnail support
+        const gumletId = this.utils.getGumletId(url);
+        if (gumletId) return `https://video.gumlet.io/${gumletId}/thumbnail-1-0.jpg`;
 
         // Default Placeholder
         return 'https://placehold.co/600x400/1c1b1f/6750a4?text=Doma+Ai';
