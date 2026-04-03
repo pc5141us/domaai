@@ -258,6 +258,8 @@ export default async function handler(req, res) {
 
 async function handleStudentMessage(msg) {
     const text = msg.text?.trim();
+    const chatId = msg.chat.id;
+    const state = await getState(chatId);
     const isStart = text?.startsWith('/start');
     
     if (isStart) {
