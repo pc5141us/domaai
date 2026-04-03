@@ -293,7 +293,7 @@ async function handleMessage(text, chatId = null) {
         '➕ إضافة طالب', '⚙️ إعدادات الإدارة', '📢 إعلان الموقع', 
         '➕ إضافة درس', '📢 إذاعة إعلان', '🔍 بحث عن طالب', 
         '🔍 بحث عن درس', '🎫 توليد الأكواد', '🏷️ عرض الأكواد',
-        '⚙️ إدارة الأكواد', '👋 دليل استخدام',
+        '⚙️ إدارة الأكواد', '👋 دليل استخدام', '📝 تعديل إعلان الموقع', '🗑️ حذف إعلان الموقع',
         '🔙 العودة للقائمة الرئيسية', '❓ المساعدة', '/start', '/help'
     ];
 
@@ -483,6 +483,21 @@ async function handleMessage(text, chatId = null) {
     if (input === '🎫 توليد الأكواد') return sendMsg('🎫 <b>اختر مدة الكود:</b>', null, codesKb, chatId);
     if (input === '🏷️ عرض الأكواد') return handleCallback('show_codes', chatId);
     if (input === '⚙️ إدارة الأكواد') return handleCallback('manage_codes', chatId);
+    
+    // التعامل مع أزرار إعلان الموقع
+    if (input === '📝 تعديل إعلان الموقع') {
+        await saveState(chatId, { action: 'site_ann_text' });
+        return sendMsg("📢 أرسل <b>نص الإعلان الجديد</b> (أو أرسل '🔙 إلغاء' للعودة):", null, [[{ text: '🔙 إلغاء' }]], chatId);
+    }
+    if (input === '🗑️ حذف إعلان الموقع') {
+        const { data: ann } = await supabase.from('users').select('id').eq('username', 'ANNOUNCEMENT_DATA').single();
+        if (ann) {
+            await supabase.from('users').delete().eq('id', ann.id);
+            return sendMsg("✅ تم حذف إعلان الموقع بنجاح.", null, [[{ text: '🔙 العودة للقائمة الرئيسية' }]], chatId);
+        } else {
+            return sendMsg("❌ لا يوجد إعلان حالياً لحذفه.", null, null, chatId);
+        }
+    }
     if (input === '👋 دليل استخدام') {
         const id = chatId.toString();
         let msg = "👋 <b>دليل استخدام لوحة التحكم:</b>\n\n";
@@ -964,8 +979,17 @@ async function handleCallback(data, chatId = null) {
 
     // 5. إعدادات الموقع والأكواد
     if (data === 'site_announcement') {
+        const { data: ann } = await supabase.from('users').select('password').eq('username', 'ANNOUNCEMENT_DATA').maybeSingle();
+        let annText = "❌ لا يوجد إعلان مفعل حالياً.";
+        if (ann && ann.password) {
+            try {
+                const obj = JSON.parse(ann.password);
+                annText = `📢 <b>الإعلان الحالي:</b>\n\n📝 النص: <code>${obj.text}</code>\n🔘 الزر: <code>${obj.buttonText || 'بدون'}</code>\n🔗 الرابط: <code>${obj.buttonUrl || 'بدون'}</code>`;
+            } catch (e) { annText = "⚠️ خطأ في قراءة بيانات الإعلان."; }
+        }
+
         const kb = [[{ text: '📝 تعديل إعلان الموقع' }], [{ text: '🗑️ حذف إعلان الموقع' }], [{ text: '🔙 العودة للقائمة الرئيسية' }]];
-        return sendMsg("📢 إعدادات شريط الموقع العلوي:", null, kb, cid);
+        return sendMsg(`${annText}\n\nماذا تريد أن تفعل؟`, null, kb, cid);
     }
     if (data === 'show_codes') {
         const { data: cols } = await supabase.from('coupons').select('*');
