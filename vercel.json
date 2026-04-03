@@ -1,20 +1,11 @@
 {
   "version": 2,
-  "name": "doma-ai-bot",
-  "builds": [
+  "name": "doma-ai-platform",
+  "cleanUrls": true,
+  "rewrites": [
     {
-      "src": "api/*.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/webhook",
-      "dest": "api/webhook.js"
-    },
-    {
-      "src": "/api/setup",
-      "dest": "api/setup.js"
+      "source": "/api/(.*)",
+      "destination": "api/$1"
     }
   ]
 }

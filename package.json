@@ -1,10 +1,7 @@
 {
-    "name": "doma-ai-vercel-bot",
+    "name": "doma-ai-platform",
     "version": "1.0.0",
-    "description": "Doma AI Telegram Admin Bot for Vercel",
-    "scripts": {
-        "start": "node api/webhook.js"
-    },
+    "type": "module",
     "dependencies": {
         "@supabase/supabase-js": "^2.39.0"
     }
