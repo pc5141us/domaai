@@ -100,18 +100,36 @@ h3,
     padding-inline-end: max(clamp(16px, 5vw, 32px), env(safe-area-inset-right));
 }
 
-/* Mobile: Increase padding to prevent content cutoff on curved screens */
+/* Mobile: Increase padding to prevent content cutoff on curved screens & Performance Overrides */
 @media (max-width: 700px) {
     body {
         /* Add safe area insets at body level for curved screens */
         padding-left: env(safe-area-inset-left);
         padding-right: env(safe-area-inset-right);
+        background: var(--background); /* Ensure solid background fallback */
     }
 
     .container {
         padding-block: 0;
         padding-inline-start: max(16px, env(safe-area-inset-left));
         padding-inline-end: max(16px, env(safe-area-inset-right));
+    }
+
+    /* Disable expensive filters for better mobile performance */
+    .glass-panel, 
+    nav.scrolled, 
+    .v3-toast, 
+    .md-dialog-overlay, 
+    .md-dialog,
+    .mobile-drawer-overlay,
+    .btn-glass {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        background: rgba(30, 30, 35, 0.95) !important; /* Move to opaque background */
+    }
+
+    .hero-glow {
+        display: none !important; /* Remove heavy blur effect on mobile */
     }
 }
 
