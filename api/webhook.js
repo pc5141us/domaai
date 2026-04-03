@@ -261,7 +261,7 @@ async function handleStudentMessage(msg) {
     const chatId = msg.chat.id;
     const state = await getState(chatId);
     const isStart = text?.startsWith('/start');
-    
+
     if (isStart) {
         await clearState(chatId);
         const kb = [[{ text: '✉️ تواصل مع الإدارة' }]];
@@ -285,7 +285,7 @@ async function handleStudentMessage(msg) {
         await notifyAdmins(`📨 <b>رسالة جديدة للمسؤول:</b>\n👤 من: <b>${uname}</b> (<code>${chatId}</code>)\n📝 الرسالة:\n\n${text}`, [[{ text: '🙋‍♂️ رد على المستخدم', callback_data: `reply_user:${chatId}` }]]);
         return sendMsg("✅ تم إرسال رسالتك للإدارة بنجاح.", null, null, chatId);
     }
-    
+
     // Attempt to link username quietly - no error if fails
     if (text && text.length > 2) {
         const { data: user } = await supabase.from('users').select('id, username').eq('username', text).single();
@@ -790,7 +790,7 @@ async function handleMessage(text, chatId = null) {
             await clearState(chatId);
             const desc = input === 'لا يوجد' ? '' : input;
             const { data: newLesson } = await supabase.from('lessons').insert([{ title: state.tempTitle, url: state.tempUrl, description: desc, created_at: new Date().toISOString() }]).select().single();
-            await broadcast(`📖 <b>درس جديد بانتظارك:</b>\n\nالعنوان: <b>${state.tempTitle}</b>\n${desc ? `الوصف: ${desc}` : ''}`);
+            await broadcast(`📖 <b>درس جديد بانتظارك:</b>\n\nالعنوان: <b>${state.tempTitle}</b>`);
             await saveState(chatId, { targetId: newLesson.id.toString(), action: 'viewing_lesson' });
             const kb = [[{ text: '✏️ تعديل الدرس' }, { text: '🗑️ حذف الدرس' }], [{ text: '🔙 رجوع' }]];
             return sendMsg(`✅ تم إضافة الدرس وإرسال تنبيه للطلاب!`, null, kb, chatId);
