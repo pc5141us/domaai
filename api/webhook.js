@@ -293,6 +293,7 @@ async function handleMessage(text, chatId = null) {
         '➕ إضافة طالب', '⚙️ إعدادات الإدارة', '📢 إعلان الموقع', 
         '➕ إضافة درس', '📢 إذاعة إعلان', '🔍 بحث عن طالب', 
         '🔍 بحث عن درس', '🎫 توليد الأكواد', '🏷️ عرض الأكواد',
+        '⚙️ إدارة الأكواد', '👋 دليل استخدام',
         '🔙 العودة للقائمة الرئيسية', '❓ المساعدة', '/start', '/help'
     ];
 
@@ -481,6 +482,7 @@ async function handleMessage(text, chatId = null) {
     if (input === '🔍 بحث عن درس') return handleCallback('search_lesson', chatId);
     if (input === '🎫 توليد الأكواد') return sendMsg('🎫 <b>اختر مدة الكود:</b>', null, codesKb, chatId);
     if (input === '🏷️ عرض الأكواد') return handleCallback('show_codes', chatId);
+    if (input === '⚙️ إدارة الأكواد') return handleCallback('manage_codes', chatId);
     if (input === '👋 دليل استخدام') {
         const id = chatId.toString();
         let msg = "👋 <b>دليل استخدام لوحة التحكم:</b>\n\n";
