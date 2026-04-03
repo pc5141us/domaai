@@ -1,5 +1,5 @@
 /**
- * Doma AI Bot - Vercel API Gateway (v2.6.0)
+ * Doma AI Bot - Vercel API Gateway (v2.9.6)
  */
 import { createClient } from '@supabase/supabase-js';
 
