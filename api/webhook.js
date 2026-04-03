@@ -303,11 +303,11 @@ async function handleMessage(text, chatId = null) {
 
     // معالجة الأزرار النصية التي كانت Inline سابقاً
     if (input.startsWith('⚙️ صلاحيات ')) {
-        const id = input.match(/\(([^)]+)\)/)?.[1];
+        const id = input.match(/\((\d+)\)/)?.[1];
         if (id) return handleCallback(`edit_perms:${id}`, chatId);
     }
     if (input.startsWith('🗑️ حذف أدمن ')) {
-        const id = input.match(/\(([^)]+)\)/)?.[1];
+        const id = input.match(/\((\d+)\)/)?.[1];
         if (id) return handleCallback(`conf_del_admin:${id}`, chatId);
     }
     // معالجة أزرار التفعيل والتعطيل للصلاحيات
@@ -819,7 +819,7 @@ async function handleCallback(data, chatId = null) {
             const res = await tg('getChat', { chat_id: id });
             if (res.ok) name = res.result.first_name;
             msg += `• 👤 <b>${name || id}</b> (<code>${id}</code>)\n`;
-            kb.push([{ text: `⚙️ صلاحيات (${id})` }]);
+            kb.push([{ text: `⚙️ صلاحيات ${name || id} (${id})` }]);
         }
         if (ids.length > 0) kb.push([{ text: '🧨 تصفير جميع الأدمنية' }]);
         kb.push([{ text: '🔙 رجوع' }]);
