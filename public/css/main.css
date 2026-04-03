@@ -1,10 +1,13 @@
-@import url('tokens.css?v=2.9.4');
+@import url('tokens.css?v=2.9.6');
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&family=Inter:wght@400;500;600&display=swap');
 
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
+    /* Force GPU for smoother scrolling on mobile */
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
 }
 
 body {
@@ -12,11 +15,16 @@ body {
     background-color: var(--background);
     color: var(--on-background);
     direction: rtl;
-    /* Allow the document to size naturally on mobile (avoid 100vh clipping) */
     min-height: 100vh;
     display: flex;
     flex-direction: column;
     font-variant-numeric: tabular-nums;
+    /* Prevent horizontal scroll issues */
+    width: 100%;
+    overflow-x: hidden;
+    /* Standardized Smoothness */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 #v3-app {
@@ -31,7 +39,9 @@ body {
     overflow-y: auto;
     overflow-x: hidden;
     scroll-behavior: smooth;
-    -webkit-overflow-scrolling: touch;
+    -webkit-overflow-scrolling: touch; /* Momentum scrolling on iOS */
+    /* Help browser prioritize content rendering */
+    content-visibility: auto;
 }
 
 /* Reset navigation to be relative within the flex-shell or keep fixed */
@@ -111,8 +121,8 @@ h3,
 
     .container {
         padding-block: 0;
-        padding-inline-start: max(16px, env(safe-area-inset-left));
-        padding-inline-end: max(16px, env(safe-area-inset-right));
+        padding-inline-start: max(12px, env(safe-area-inset-left));
+        padding-inline-end: max(12px, env(safe-area-inset-right));
     }
 
     /* Disable expensive filters for better mobile performance */
@@ -125,7 +135,7 @@ h3,
     .btn-glass {
         backdrop-filter: none !important;
         -webkit-backdrop-filter: none !important;
-        background: rgba(30, 30, 35, 0.95) !important; /* Move to opaque background */
+        background: rgba(30, 30, 35, 0.98) !important; /* Move to opaque background for performance */
     }
 
     .hero-glow {

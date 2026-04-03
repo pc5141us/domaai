@@ -8,12 +8,18 @@
     <meta name="theme-color" content="#1c1b1f">
     <title>Doma Ai | المنصة الذكية</title>
 
+    <!-- Performance Optimizations -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://vjs.zencdn.net">
+
     <!-- Icons & Fonts -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
 
-    <!-- Video JS -->
+    <!-- Video JS CSS -->
     <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
 
     <!-- Styles -->
@@ -33,30 +39,27 @@
                     DOMA<span style="color: var(--primary);"> AI</span>
                 </div>
                 <div id="nav-actions" style="display: flex; gap: 12px; align-items: center;">
-                    <!-- Actions will be injected here -->
                 </div>
             </div>
         </nav>
 
         <main id="v3-content">
-            <!-- Content will be injected here by App.render() -->
         </main>
     </div>
 
     <!-- Modals Container -->
     <div id="v3-modals-container"></div>
 
-    <!-- Vercel Speed Insights (Optional) -->
+    <!-- External SDKs (Deferred for speed) -->
+    <script defer src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script defer src="/_vercel/insights/script.js"></script>
 
-    <!-- Supabase SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-    <!-- App Scripts -->
-    <script src="js/db.js?v=2.9.6"></script>
-    <script src="js/store.js?v=2.9.6"></script>
-    <script src="js/ui.js?v=2.9.6"></script>
-    <script src="js/app.js?v=2.9.6"></script>
+    <!-- App Scripts (Deferred for speed) -->
+    <script defer src="js/db.js?v=2.9.6"></script>
+    <script defer src="js/store.js?v=2.9.6"></script>
+    <script defer src="js/ui.js?v=2.9.6"></script>
+    <script defer src="js/app.js?v=2.9.6"></script>
 </body>
 
 </html>
