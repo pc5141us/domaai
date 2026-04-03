@@ -563,12 +563,26 @@ async function handleMessage(text, chatId = null) {
             return sendMsg(`✅ تم تغيير الكود بنجاح!\nالكود الجديد: <code>${newCode}</code>`, null, [[{text: '🔙 العودة للقائمة الرئيسية'}]], chatId);
         }
         if (action === 'edit_coupon_dur') {
-            const newDur = parseInt(input);
-            if (isNaN(newDur)) return sendMsg("❌ يرجى إرسال رقم صحيح للمدة.", null, null, chatId);
-            state.tempDur = newDur;
+            let d = parseInt(input), t = 'days';
+            if (isNaN(d)) {
+                // التعامل مع الأزرار النصية
+                if (input.includes('ساعة')) { d = 1; t = 'hours'; }
+                else if (input.includes('30')) { d = 30; }
+                else if (input.includes('7')) { d = 7; }
+                else if (input.includes('365') || input.includes('سنة')) { d = 365; }
+                else if (input.includes('يوم')) { d = 1; t = 'days'; }
+                else return sendMsg("❌ يرجى إرسال رقم صحيح للمدة أو الاختيار من الأزرار.", null, null, chatId);
+
+                // إذا كان الاختيار من الأزرار، نقوم بالتحديث فوراً
+                state.tempDur = d;
+                await saveState(chatId, state);
+                return handleCallback(`edit_coupon_type:${t}`, chatId);
+            }
+            
+            state.tempDur = d;
             state.action = 'edit_coupon_type';
             await saveState(chatId, state);
-            return sendMsg(`⏳ المدة: <b>${newDur}</b>\nاختر نوع المدة:`, [[{text: '🕒 ساعة', callback_data: 'edit_coupon_type:hours'}, {text: '📅 يوم', callback_data: 'edit_coupon_type:days'}]], null, chatId);
+            return sendMsg(`⏳ المدة: <b>${d}</b>\nاختر نوع المدة:`, [[{text: '🕒 ساعة', callback_data: 'edit_coupon_type:hours'}, {text: '📅 يوم', callback_data: 'edit_coupon_type:days'}]], null, chatId);
         }
 
         if (action === 'broadcast_mode') {
@@ -986,7 +1000,12 @@ async function handleCallback(data, chatId = null) {
         }
         if (step === 'dur') {
             await saveState(cid, { targetId: id, action: 'edit_coupon_dur' });
-            return sendMsg("⏳ أرسل <b>المدة الجديدة</b> (أرقام فقط):", null, null, cid);
+            const ik = [
+                [{ text: '🕒 ساعة' }, { text: '📅 يوم' }, { text: '📅 7 أيام' }],
+                [{ text: '📅 30 يوم' }, { text: '📅 سنة' }],
+                [{ text: '🔙 رجوع' }]
+            ];
+            return sendMsg("⏳ أرسل <b>المدة الجديدة</b> (أرقام فقط) أو اختر من الأزرار:", ik, null, cid);
         }
     }
     if (data.startsWith('edit_coupon_type:')) {
