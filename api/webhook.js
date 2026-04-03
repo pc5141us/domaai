@@ -489,7 +489,7 @@ async function handleMessage(text, chatId = null) {
         if (state.targetId) {
             const { data: l } = await supabase.from('lessons').select('*').eq('id', state.targetId).single();
             if (l) {
-                await broadcast(`📖 <b>تحديث في درس:</b>\n\nالعنوان: <b>${l.title}</b>\n${l.description ? `📝 ${l.description}` : ''}`);
+                await broadcast(`📖 <b>عنوان الدرس: ${l.title}</b>\n\n🔗 رابط المشاهدة:\n${l.url}`);
                 return sendMsg("✅ تم إذاعة الدرس للطلاب بنجاح.", null, null, chatId);
             }
         }
@@ -801,7 +801,7 @@ async function handleMessage(text, chatId = null) {
             await clearState(chatId);
             const desc = input === 'لا يوجد' ? '' : input;
             const { data: newLesson } = await supabase.from('lessons').insert([{ title: state.tempTitle, url: state.tempUrl, description: desc, created_at: new Date().toISOString() }]).select().single();
-            await broadcast(`📖 <b>درس جديد بانتظارك:</b>\n\nالعنوان: <b>${state.tempTitle}</b>`);
+            await broadcast(`📖 <b>عنوان الدرس: ${state.tempTitle}</b>\n\n🔗 رابط المشاهدة:\n${state.tempUrl}`);
             await saveState(chatId, { targetId: newLesson.id.toString(), action: 'viewing_lesson' });
             const kb = [[{ text: '✏️ تعديل الدرس' }, { text: '🗑️ حذف الدرس' }], [{ text: '📢 إذاعة للطلاب' }], [{ text: '🔙 رجوع' }]];
             return sendMsg(`✅ تم إضافة الدرس وإرسال تنبيه للطلاب!`, null, kb, chatId);
