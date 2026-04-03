@@ -103,7 +103,7 @@ const mainKb = (chatId) => {
     if (hasPerm(id, 'stats')) all.push({ text: '📊 إحصائيات المنصة' });
     if (hasPerm(id, 'broadcast')) all.push({ text: '📢 إذاعة إعلان' });
     if (hasPerm(id, 'site_ann')) all.push({ text: '📢 إعلان الموقع' });
-    
+
     if (hasPerm(id, 'lessons')) {
         all.push({ text: '➕ إضافة درس' });
         all.push({ text: '📚 إدارة الدروس' });
@@ -148,7 +148,7 @@ const codesKb = [
 async function sendMsg(text, ik = null, kb = null, targetChatId = null) {
     const cid = targetChatId || SUPER_ADMIN;
     const p = { chat_id: cid, text, parse_mode: 'HTML' };
-    
+
     let finalKb = null;
     if (ik) {
         finalKb = ik.map(row => row.map(btn => ({ text: btn.text })));
@@ -164,14 +164,14 @@ async function sendMsg(text, ik = null, kb = null, targetChatId = null) {
     if (finalKb) {
         p.reply_markup = { keyboard: finalKb, resize_keyboard: true };
     }
-    
+
     await tg('sendMessage', p);
 }
 
 async function broadcast(text) {
     const config = await getBotConfig();
     const chatIds = config.all_users || [];
-    
+
     // أضف أيضاً الطلاب الذين لديهم telegram_id ولم يرسلوا رسالة للبوت بعد (للاحتياط)
     const { data: stds } = await supabase.from('users').select('telegram_id').not('telegram_id', 'is', null);
     if (stds) {
@@ -194,7 +194,7 @@ async function broadcast(text) {
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(200).send('Doma AI Webhook Vercel Endpoint OK');
-    
+
     const body = req.body;
     if (!body) return res.status(200).send('OK');
 
@@ -258,13 +258,18 @@ export default async function handler(req, res) {
 
 async function handleStudentMessage(msg) {
     const text = msg.text?.trim();
-    const chatId = msg.chat.id;
-    const state = await getState(chatId);
-
-    if (text === '/start' || text === '🏠 القائمة الرئيسية' || text === '🔙 إلغاء') {
+    const isStart = text?.startsWith('/start');
+    
+    if (isStart) {
         await clearState(chatId);
         const kb = [[{ text: '✉️ تواصل مع الإدارة' }]];
         return sendMsg("👋 <b>أهلاً بك في بوت منصة Doma AI</b>\n\nتسرنا خدمتك! يمكنك استخدام الأزرار المتاحة للتواصل مع الإدارة والاستفسار.", null, kb, chatId);
+    }
+
+    if (text === '🏠 القائمة الرئيسية' || text === '🔙 إلغاء') {
+        await clearState(chatId);
+        const kb = [[{ text: '✉️ تواصل مع الإدارة' }]];
+        return sendMsg("🏠 القائمة الرئيسية", null, kb, chatId);
     }
 
     if (text === '✉️ تواصل مع الإدارة') {
@@ -287,7 +292,8 @@ async function handleStudentMessage(msg) {
             return sendMsg(`✅ تم ربط حسابك بنجاح يا <b>${user.username}</b>!\nستصلك الآن كافة التحديثات والإعلانات هنا.`, null, null, msg.chat.id);
         }
     }
-    return sendMsg("👋 <b>أهلاً بك في بوت منصة Doma AI</b>\n\nتسرنا خدمتك! يمكنك استخدام الأزرار أدناه للتواصل مع الإدارة والاستفسار.", null, [[{ text: '✉️ تواصل مع الإدارة' }]], msg.chat.id);
+    // No response for unknown messages to prevent spamming, especially in groups
+    return;
 }
 
 async function handleMessage(text, chatId = null) {
@@ -297,9 +303,9 @@ async function handleMessage(text, chatId = null) {
 
     // أوامر القائمة الرئيسية - تقوم بتصفير الحالة دائماً لمنع التعارض
     const mainCommands = [
-        '📊 إحصائيات المنصة', '👥 إدارة الطلاب', '📚 إدارة الدروس', 
-        '➕ إضافة طالب', '⚙️ إعدادات الإدارة', '📢 إعلان الموقع', 
-        '➕ إضافة درس', '📢 إذاعة إعلان', '🔍 بحث عن طالب', 
+        '📊 إحصائيات المنصة', '👥 إدارة الطلاب', '📚 إدارة الدروس',
+        '➕ إضافة طالب', '⚙️ إعدادات الإدارة', '📢 إعلان الموقع',
+        '➕ إضافة درس', '📢 إذاعة إعلان', '🔍 بحث عن طالب',
         '🔍 بحث عن درس', '🎫 توليد الأكواد', '🏷️ عرض الأكواد',
         '⚙️ إدارة الأكواد', '👋 دليل استخدام', '📝 تعديل إعلان الموقع', '🗑️ حذف إعلان الموقع',
         '🔙 العودة للقائمة الرئيسية', '❓ المساعدة', '/start', '/help'
@@ -384,10 +390,10 @@ async function handleMessage(text, chatId = null) {
 
         // 2. حالات الإضافة أو البحث أو البث (نعود للقائمة الخاصة بالقسم)
         if (action.includes('student') || action.includes('user')) {
-             return sendStudentsList(state.last_student_page || 0, chatId);
+            return sendStudentsList(state.last_student_page || 0, chatId);
         }
         if (action.includes('lesson')) {
-             return sendLessonsList(state.last_lesson_page || 0, chatId);
+            return sendLessonsList(state.last_lesson_page || 0, chatId);
         }
         if (action.includes('site_ann')) {
             return handleCallback('site_announcement', chatId);
@@ -395,7 +401,7 @@ async function handleMessage(text, chatId = null) {
         if (action.includes('coupon') || action.includes('code')) {
             return handleCallback('manage_codes', chatId);
         }
-        
+
         await clearState(chatId);
         return sendMsg("🏠 القائمة الرئيسية", null, mainKb(chatId), chatId);
     }
@@ -509,7 +515,7 @@ async function handleMessage(text, chatId = null) {
     if (input === '🎫 توليد الأكواد') return sendMsg('🎫 <b>اختر مدة الكود:</b>', null, codesKb, chatId);
     if (input === '🏷️ عرض الأكواد') return handleCallback('show_codes', chatId);
     if (input === '⚙️ إدارة الأكواد') return handleCallback('manage_codes', chatId);
-    
+
     // التعامل مع أزرار إعلان الموقع
     if (input === '📝 تعديل إعلان الموقع') {
         await saveState(chatId, { action: 'site_ann_text' });
@@ -555,7 +561,7 @@ async function handleMessage(text, chatId = null) {
         // نتجاوز الأيقونة (🔴🟢🟡) إذا كانت موجودة
         if (parts.length >= 2 && parts[0].length <= 5) uname = parts.slice(1).join(' ');
         uname = uname.trim().toLowerCase().replace(/[^\u0000-\u007F]/g, '').replace(/\s+/g, '');
-        
+
         // البحث مع تجاهل حالة الأحرف بشكل قاطع وحتمي
         let { data: user } = await supabase.from('users').select('id, username').ilike('username', uname).maybeSingle();
         if (!user) {
@@ -619,11 +625,11 @@ async function handleMessage(text, chatId = null) {
                 await saveState(chatId, state);
                 return handleCallback(`edit_coupon_type:${t}`, chatId);
             }
-            
+
             state.tempDur = d;
             state.action = 'edit_coupon_type';
             await saveState(chatId, state);
-            return sendMsg(`⏳ المدة: <b>${d}</b>\nاختر نوع المدة:`, [[{text: '🕒 ساعة', callback_data: 'edit_coupon_type:hours'}, {text: '📅 يوم', callback_data: 'edit_coupon_type:days'}]], [[{ text: '🔙 رجوع' }]], chatId);
+            return sendMsg(`⏳ المدة: <b>${d}</b>\nاختر نوع المدة:`, [[{ text: '🕒 ساعة', callback_data: 'edit_coupon_type:hours' }, { text: '📅 يوم', callback_data: 'edit_coupon_type:days' }]], [[{ text: '🔙 رجوع' }]], chatId);
         }
 
         if (action === 'broadcast_mode') {
@@ -669,10 +675,10 @@ async function handleMessage(text, chatId = null) {
         if (action === 'add_user_name') {
             const uname = input.trim().toLowerCase().replace(/[^\u0000-\u007F]/g, '').replace(/\s+/g, '');
             if (!uname) return sendMsg("❌ يرجى إدخال اسم مستخدم صحيح (أحرف إنجليزية وأرقام فقط):", null, [[{ text: '🔙 إلغاء' }]], chatId);
-            
+
             const { data } = await supabase.from('users').select('id').eq('username', uname).single();
             if (data) return sendMsg("❌ اسم المستخدم موجود بالفعل، جرب اسماً آخر:", null, [[{ text: '🔙 إلغاء' }]], chatId);
-            
+
             state.action = 'add_user_pass';
             state.tempName = uname;
             await saveState(chatId, state);
@@ -681,7 +687,7 @@ async function handleMessage(text, chatId = null) {
         if (action === 'add_user_pass') {
             const pass = input.trim().toLowerCase().replace(/[^\u0000-\u007F]/g, ''); // منع العربي وتحويل للصغير
             if (!pass) return sendMsg("❌ يرجى إدخال كلمة مرور صحيحة (أحرف إنجليزية وأرقام فقط):", null, [[{ text: '🔙 إلغاء' }]], chatId);
-            
+
             state.action = 'add_user_dur';
             state.tempPass = pass;
             await saveState(chatId, state);
@@ -789,7 +795,7 @@ async function handleMessage(text, chatId = null) {
         }
 
         if (action === 'edit_lesson_title') {
-                if (input !== 'نفسه') state.tempTitle = input;
+            if (input !== 'نفسه') state.tempTitle = input;
             state.action = 'edit_lesson_url';
             await saveState(chatId, state);
             return sendMsg(`🔗 أرسل <b>الرابط الجديد</b>\n(أو "نفسه"):`, null, [[{ text: '🔙 رجوع' }]], chatId);
@@ -886,12 +892,12 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
         const isAdded = !perms.includes(pk);
         CACHED_ADMINS_PERMS[id] = isAdded ? [...perms, pk] : perms.filter(x => x !== pk);
         await saveAdmins(CACHED_ADMINS_PERMS);
-        
+
         // تحديث كيبورد الأدمن المستهدف فوراً
         const statusText = isAdded ? 'تفعيل' : 'تعطيل';
-        await tg('sendMessage', { 
-            chat_id: id, 
-            text: `🔔 <b>تحديث صلاحيات:</b> تم ${statusText} صلاحية (<b>${PERMISSIONS_MAP[pk]}</b>) لك الآن.\nتم تحديث قائمة الأزرار لديك فوراً.`, 
+        await tg('sendMessage', {
+            chat_id: id,
+            text: `🔔 <b>تحديث صلاحيات:</b> تم ${statusText} صلاحية (<b>${PERMISSIONS_MAP[pk]}</b>) لك الآن.\nتم تحديث قائمة الأزرار لديك فوراً.`,
             parse_mode: 'HTML',
             reply_markup: { keyboard: mainKb(id), resize_keyboard: true }
         });
@@ -954,9 +960,9 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
             [{ text: '📅 30 يوم', callback_data: `act_user:${username}:30d` }, { text: '📅 سنة', callback_data: `act_user:${username}:365d` }]
         ];
         // ملاحظة: نستخدم tg مباشرة لإرسال أزرار Inline (التي يسميها البوت ik هنا) لأن sendMsg يحولها لـ ReplyKeyboard
-        return tg('sendMessage', { 
-            chat_id: cid, 
-            text: `👤 تفعيل الطالب: <b>${username}</b>\nاختر مدة التفعيل:`, 
+        return tg('sendMessage', {
+            chat_id: cid,
+            text: `👤 تفعيل الطالب: <b>${username}</b>\nاختر مدة التفعيل:`,
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: ik }
         });
@@ -989,13 +995,13 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
         const { data: user } = await supabase.from('users').select('*').eq('id', id).single();
         if (!user) return sendMsg("❌ الطالب غير موجود.");
         await saveState(cid, { targetId: id, action: 'viewing_student' });
-        
+
         const now = new Date();
         const isExpired = user.expiry_date && new Date(user.expiry_date) < now;
         let icon = '🟢';
         if (user.status === 'pending') icon = '❓';
         else if (isExpired || user.status === 'banned') icon = '🔴';
-        
+
         const expiry = user.expiry_date ? new Date(user.expiry_date).toLocaleDateString() : 'غير محدد';
         const msg = `${icon} <b>بيانات الطالب:</b>\n👤 اليوزر: <code>${user.username}</code>\n🔑 الباسورد: <code>${user.password || 'غير محدد'}</code>\n📊 الحالة: ${isExpired ? '<b>منتهي (🔴)</b>' : (user.status === 'active' ? 'نشط (🟢)' : (user.status === 'pending' ? 'معلق (❓)' : 'محظور (🚫)'))}\n📅 الانتهاء: ${expiry}`;
         const kb = [
@@ -1051,7 +1057,7 @@ async function handleCallback(data, chatId = null, queryId = null, messageId = n
         const filtered = (cols || []).filter(c => c && c.code && c.code !== 'BOT_STATE_ADMIN').sort((a, b) => b.id - a.id).slice(0, 40);
         if (!filtered.length) return sendMsg("❌ لا توجد أكواد حالياً.", null, [[{ text: '🔙 العودة للقائمة الرئيسية' }]], cid);
         let msg = "🏷️ <b>أحدث 40 كود:</b>\n<i>(اضغط على الكود لنسخه)</i>\n\n";
-        filtered.forEach((c, i) => { msg += `${i+1}. <code>${c.code}</code> (${c.duration}${c.type === 'hours' ? 'س' : 'ي'})\n`; });
+        filtered.forEach((c, i) => { msg += `${i + 1}. <code>${c.code}</code> (${c.duration}${c.type === 'hours' ? 'س' : 'ي'})\n`; });
         const kb = [[{ text: '🎫 توليد الأكواد' }], [{ text: '🔙 العودة للقائمة الرئيسية' }]];
         return sendMsg(msg, null, kb, cid);
     }
@@ -1195,13 +1201,13 @@ async function notifyAdmins(text, ik = null) {
     const admins = [SUPER_ADMIN, ...Object.keys(config.admins || {})];
     for (const a of admins) {
         try {
-            await tg('sendMessage', { 
-                chat_id: a, 
-                text, 
-                parse_mode: 'HTML', 
-                reply_markup: ik ? { inline_keyboard: ik } : undefined 
+            await tg('sendMessage', {
+                chat_id: a,
+                text,
+                parse_mode: 'HTML',
+                reply_markup: ik ? { inline_keyboard: ik } : undefined
             });
-        } catch (e) {}
+        } catch (e) { }
     }
 }
 
