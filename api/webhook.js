@@ -238,7 +238,8 @@ export default async function handler(req, res) {
 
             if (isAdmin(from.id)) {
                 await tg('answerCallbackQuery', { callback_query_id: body.callback_query.id });
-                await handleCallback(data, chatId);
+                const msgId = message ? message.message_id : null;
+                await handleCallback(data, chatId, body.callback_query.id, msgId);
             }
         }
     } catch (e) {
@@ -792,7 +793,7 @@ async function handleMessage(text, chatId = null) {
 }
 
 
-async function handleCallback(data, chatId = null) {
+async function handleCallback(data, chatId = null, queryId = null, messageId = null) {
     const cid = chatId || SUPER_ADMIN;
 
     const adminActions = ['admin_settings', 'add_admin_start', 'list_admins', 'edit_perms:', 'tog_perm:', 'conf_del_admin:', 'del_admin:'];
@@ -805,47 +806,73 @@ async function handleCallback(data, chatId = null) {
         const kb = [[{ text: '➕ إضافة أدمن جديد' }], [{ text: '📋 التحكم في الصلاحيات' }], [{ text: '🔙 العودة للقائمة الرئيسية' }]];
         return sendMsg("⚙️ <b>إعدادات الإدارة:</b>\nتحكم في المسؤولين وصلاحياتهم.", null, kb, cid);
     }
+    if (data === 'main_menu') {
+        return sendAdminDashboard(cid);
+    }
+    if (data === 'system_reset_admins') {
+        if (cid.toString() !== SUPER_ADMIN.toString()) return;
+        return sendMsg("💥 <b>تحذير نهائي:</b> هل تريد فعلاً حذف جميع الأدمنية وإلغاء صلاحياتهم؟", null, [[{ text: '⚠️ نعم، قم بالتصفير' }], [{ text: '🔙 رجوع' }]], cid);
+    }
     if (data === 'add_admin_start') {
         await saveState(cid, { action: 'add_admin_id' });
-        return sendMsg("👤 أرسل <b>Telegram ID</b> للأدمن الجديد:", null, [[{ text: '🔙 رجوع' }]], cid);
+        return sendMsg("👤 أرسل <b>Telegram ID</b> للأدمن الجديد:", null, [[{ text: '🔙 إلغاء' }]], cid);
     }
     if (data === 'list_admins') {
         const permsMap = await fetchAdmins();
         const ids = Object.keys(permsMap).filter(id => id !== SUPER_ADMIN);
         let msg = "📋 <b>إدارة الأدمنز:</b>\n\n👑 <b>أنت (Super Admin)</b>\n\n";
-        const kb = [];
+        const ik = [];
         for (const id of ids) {
             let name = null;
             const res = await tg('getChat', { chat_id: id });
             if (res.ok) name = res.result.first_name;
             msg += `• 👤 <b>${name || id}</b> (<code>${id}</code>)\n`;
-            kb.push([{ text: `⚙️ صلاحيات ${name || id} (${id})` }]);
+            ik.push([{ text: `⚙️ صلاحيات ${name || id} (${id})`, callback_data: `edit_perms:${id}` }]);
         }
-        if (ids.length > 0) kb.push([{ text: '🧨 تصفير جميع الأدمنية' }]);
-        kb.push([{ text: '🔙 رجوع' }]);
-        return sendMsg(msg, null, kb, cid);
+        ik.push([{ text: '➕ إضافة أدمن جديد', callback_data: 'add_admin_start' }]);
+        if (ids.length > 0) ik.push([{ text: '🧨 تصفير جميع الأدمنية', callback_data: 'system_reset_admins' }]);
+        ik.push([{ text: '🏠 القائمة الرئيسية', callback_data: 'main_menu' }]);
+
+        if (messageId) {
+            return tg('editMessageText', { chat_id: cid, message_id: messageId, text: msg, parse_mode: 'HTML', reply_markup: { inline_keyboard: ik } });
+        }
+        return tg('sendMessage', { chat_id: cid, text: msg, parse_mode: 'HTML', reply_markup: { inline_keyboard: ik } });
     }
     if (data.startsWith('edit_perms:')) {
         const id = data.split(':')[1];
         const perms = CACHED_ADMINS_PERMS[id] || [];
         await saveState(cid, { action: 'editing_perms', targetId: id });
         let msg = `⚙️ <b>صلاحيات الأدمن:</b> (<code>${id}</code>)\nاختر الصلاحية لتبديل حالتها:`;
-        const kb = [];
+        const ik = [];
         Object.keys(PERMISSIONS_MAP).forEach(pk => {
             const has = perms.includes(pk);
-            kb.push([{ text: `${has ? '✅' : '❌'} ${PERMISSIONS_MAP[pk]}` }]);
+            ik.push([{ text: `${has ? '✅' : '❌'} ${PERMISSIONS_MAP[pk]}`, callback_data: `tog_perm:${id}:${pk}` }]);
         });
-        kb.push([{ text: '🗑️ حذف هذا الأدمن' }, { text: '🔙 رجوع' }]);
-        return sendMsg(msg, null, kb, cid);
+        ik.push([{ text: '🗑️ حذف هذا الأدمن', callback_data: `conf_del_admin:${id}` }]);
+        ik.push([{ text: '🔙 العودة لقائمة الأدمنز', callback_data: 'list_admins' }]);
+
+        if (messageId) {
+            return tg('editMessageText', { chat_id: cid, message_id: messageId, text: msg, parse_mode: 'HTML', reply_markup: { inline_keyboard: ik } });
+        }
+        return tg('sendMessage', { chat_id: cid, text: msg, parse_mode: 'HTML', reply_markup: { inline_keyboard: ik } });
     }
     if (data.startsWith('tog_perm:')) {
         const [, id, pk] = data.split(':');
         const perms = CACHED_ADMINS_PERMS[id] || [];
-        CACHED_ADMINS_PERMS[id] = perms.includes(pk) ? perms.filter(x => x !== pk) : [...perms, pk];
+        const isAdded = !perms.includes(pk);
+        CACHED_ADMINS_PERMS[id] = isAdded ? [...perms, pk] : perms.filter(x => x !== pk);
         await saveAdmins(CACHED_ADMINS_PERMS);
-        const status = CACHED_ADMINS_PERMS[id].includes(pk) ? 'تم تفعيل' : 'تم تعطيل';
-        await tg('sendMessage', { chat_id: cid, text: `🔹 <b>تحديث:</b> ${status} صلاحية (<b>${PERMISSIONS_MAP[pk]}</b>) للأدمن بنجاح.`, parse_mode: 'HTML' });
-        return handleCallback(`edit_perms:${id}`, cid);
+        
+        // تحديث كيبورد الأدمن المستهدف فوراً
+        const statusText = isAdded ? 'تفعيل' : 'تعطيل';
+        await tg('sendMessage', { 
+            chat_id: id, 
+            text: `🔔 <b>تحديث صلاحيات:</b> تم ${statusText} صلاحية (<b>${PERMISSIONS_MAP[pk]}</b>) لك الآن.\nتم تحديث قائمة الأزرار لديك فوراً.`, 
+            parse_mode: 'HTML',
+            reply_markup: { keyboard: mainKb(id), resize_keyboard: true }
+        });
+
+        return handleCallback(`edit_perms:${id}`, cid, queryId, messageId);
     }
     if (data.startsWith('conf_del_admin:')) {
         const id = data.split(':')[1];
