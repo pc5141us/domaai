@@ -247,15 +247,15 @@ const UI = {
     adminDashboard() {
         return `
         <div class="container" style="padding-top: 80px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px;">
-                <h1 class="m3-headline-large">لوحة التحكم <span class="badge badge-active" style="vertical-align: middle; margin-right: 12px;">المسؤول</span></h1>
-                <div style="display: flex; gap: 12px;">
-                    <button class="btn btn-glass" onclick="App.openTempMail()" style="border-color: #6750a4; color: #6750a4;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; flex-wrap: wrap; gap: 20px;">
+                <h1 class="m3-headline-large" style="margin: 0;">لوحة التحكم <span class="badge badge-active" style="vertical-align: middle; margin-right: 12px;">المسؤول</span></h1>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; flex: 1; min-width: 300px;">
+                    <button class="btn btn-glass" onclick="App.openTempMail()" style="border-color: #6750a4; color: #6750a4; flex: 1; min-width: 120px;">
                         <span class="material-icons" style="font-size: 18px; margin-left: 4px; vertical-align: middle;">mail_outline</span> بريد مؤقت
                     </button>
-                    <button class="btn btn-glass" onclick="App.showAddCoupon()" style="border-color: var(--secondary);">+ إضافة كود</button>
-                    <button class="btn btn-glass" onclick="App.showAddStudent()">+ إضافة طالب</button>
-                    <button class="btn btn-primary" onclick="App.showAddLesson()">+ إضافة درس</button>
+                    <button class="btn btn-glass" onclick="App.showAddCoupon()" style="border-color: var(--secondary); flex: 1; min-width: 110px;">+ إضافة كود</button>
+                    <button class="btn btn-glass" onclick="App.showAddStudent()" style="border-color: var(--outline); flex: 1; min-width: 110px;">+ إضافة طالب</button>
+                    <button class="btn btn-primary" onclick="App.showAddLesson()" style="flex: 1; min-width: 110px;">+ إضافة درس</button>
                 </div>
             </div>
             
