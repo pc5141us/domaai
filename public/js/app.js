@@ -1,5 +1,5 @@
 /**
- * Modern LMS v3 - Modular State Management (v2.9.4)
+ * Modern LMS v3 - Modular State Management (v2.9.6)
  */
 
 const App = {
@@ -29,7 +29,7 @@ const App = {
     },
 
     async init() {
-        console.log('🚀 Doma AI v2.9.4 Initializing...');
+        console.log('🚀 Doma AI v2.9.6 Initializing...');
         await Store.init();
 
         // Inject Modals Container
@@ -235,6 +235,15 @@ const App = {
         } else if (view === 'register') {
             root.innerHTML = UI.register();
         } else if (view === 'lesson') {
+            if (!user) {
+                sessionStorage.setItem('redirect_lesson_id', Store.state.selectedLessonId);
+                this.navigate('login');
+                return;
+            }
+            if (user && user.role !== 'admin' && !user.is_active) {
+                this.navigate('dashboard');
+                return;
+            }
             const lesson = Store.state.lessons.find(l => l.id == Store.state.selectedLessonId);
             if (lesson) {
                 root.innerHTML = UI.lessonPage(lesson);
@@ -536,7 +545,16 @@ const App = {
             // Clear temp credentials after successful login
             sessionStorage.removeItem('temp_username');
             sessionStorage.removeItem('temp_password');
-            this.navigate('dashboard', null, false, true);
+            
+            // Check for redirect lesson after login
+            const redirectLessonId = sessionStorage.getItem('redirect_lesson_id');
+            if (redirectLessonId) {
+                sessionStorage.removeItem('redirect_lesson_id');
+                this.navigate('lesson', redirectLessonId, false, true);
+            } else {
+                this.navigate('dashboard', null, false, true);
+            }
+
             // Notify Bot on successful login
             const role = Store.state.currentUser.role === 'admin' ? '🛡️ أدمن' : '🎓 طالب';
             this.telegram.sendMessage(`👤 <b>تسجيل دخول جديد:</b>\n${role}: <code>${u}</code>\n⏰ الوقت: ${new Date().toLocaleTimeString('ar-EG')}`);

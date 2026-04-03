@@ -1,5 +1,5 @@
 /**
- * Modern LMS v3 - Database Layer (v2.9.4)
+ * Modern LMS v3 - Database Layer (v2.9.6)
  */
 
 // --- SUPABASE CREDENTIALS (Base64 Encoded) ---

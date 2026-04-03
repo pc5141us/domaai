@@ -1,5 +1,5 @@
 /**
- * Modern LMS v3 - Modular State Management (v2.9.4)
+ * Modern LMS v3 - Modular State Management (v2.9.6)
  */
 
 // Broadcast Channel for strict single-session enforcement across tabs/windows
