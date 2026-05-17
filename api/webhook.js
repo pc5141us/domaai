@@ -18,19 +18,28 @@ const PERMISSIONS_MAP = {
 
 let CACHED_ADMINS_PERMS = {}; // { ID: [perms] }
 
+// In-memory cache for bot config (valid for the lifetime of one serverless request)
+let _botConfigCache = null;
+
 async function getBotConfig() {
+    // Return cached version if already fetched in this request
+    if (_botConfigCache) return JSON.parse(JSON.stringify(_botConfigCache));
     try {
         const { data } = await supabase.from('users').select('password').eq('username', 'DOMA_AI_BOT').single();
-        return data && data.password ? JSON.parse(data.password) : { admins: {}, announcement: {}, all_users: [] };
-    } catch (e) { return { admins: {}, announcement: {}, all_users: [] }; }
+        _botConfigCache = data && data.password ? JSON.parse(data.password) : { admins: {}, announcement: {}, all_users: [] };
+    } catch (e) {
+        _botConfigCache = { admins: {}, announcement: {}, all_users: [] };
+    }
+    return JSON.parse(JSON.stringify(_botConfigCache));
 }
 
 async function saveBotConfig(config) {
+    _botConfigCache = config; // Update in-memory cache immediately
     const jsonStr = JSON.stringify(config);
-    const { data } = await supabase.from('users').select('id').eq('username', 'DOMA_AI_BOT').single();
-    if (data) await supabase.from('users').update({ password: jsonStr }).eq('id', data.id);
-    else await supabase.from('users').insert([{ username: 'DOMA_AI_BOT', password: jsonStr, role: 'system', status: 'active' }]);
+    // Single API call: updateByField creates row if not exists, updates if found
+    await supabase.from('users').update({ password: jsonStr, role: 'system', status: 'active' }).eq('username', 'DOMA_AI_BOT');
 }
+
 
 async function fetchAdmins() {
     const config = await getBotConfig();
@@ -212,7 +221,9 @@ export default async function handler(req, res) {
                 // Tracking all users for broadcast
                 const config = await getBotConfig();
                 if (!config.all_users) config.all_users = [];
-                if (!config.all_users.includes(chat.id)) {
+                // Use String() to avoid integer/string type mismatch
+                const chatIdStr = String(chat.id);
+                if (!config.all_users.map(String).includes(chatIdStr)) {
                     config.all_users.push(chat.id);
                     await saveBotConfig(config);
                     // Notify admins on join
@@ -233,7 +244,9 @@ export default async function handler(req, res) {
             // Tracking all users for broadcast
             const config = await getBotConfig();
             if (!config.all_users) config.all_users = [];
-            if (!config.all_users.includes(from.id)) {
+            // Use String() to avoid integer/string type mismatch
+            const fromIdStr = String(from.id);
+            if (!config.all_users.map(String).includes(fromIdStr)) {
                 config.all_users.push(from.id);
                 await saveBotConfig(config);
                 // Notify admins on join (callback)
