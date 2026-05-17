@@ -14,11 +14,11 @@ export async function appsGet(params) {
 }
 
 export async function appsPost(body) {
-    const res = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
+    // Google Apps Script redirects POST → GET (losing the body).
+    // Fix: Send all operations as GET with the body encoded as a URL param.
+    const url = new URL(APPS_SCRIPT_URL);
+    url.searchParams.set('payload', JSON.stringify(body));
+    const res = await fetch(url.toString());
     return await res.json();
 }
 
