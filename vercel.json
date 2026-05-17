@@ -2,6 +2,9 @@
   "version": 2,
   "name": "doma-ai-platform",
   "cleanUrls": true,
+  "env": {
+    "APPS_SCRIPT_URL": "https://script.google.com/macros/s/AKfycbzZA8foEVn5-ltu4nPvJbXl-I2TIeT-ZW4QjCYaeSeIDUvGv-TXACcFdAOb2YYHfXUi/exec"
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",

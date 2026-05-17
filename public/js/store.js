@@ -53,9 +53,10 @@ const Store = {
             const data = await DB.getData();
 
             if (data) {
-                this.state.users = (data.users || []).sort((a, b) => (b.id || 0) - (a.id || 0));
+                this.state.users = (data.users || []).filter(u => u.username !== 'ANNOUNCEMENT_DATA').sort((a, b) => (b.id || 0) - (a.id || 0));
                 this.state.lessons = (data.lessons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
                 this.state.coupons = (data.coupons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
+                if (data.announcement) this.state.announcement = data.announcement;
             }
         } catch (e) {
             console.log('Server offline, using empty state');
@@ -178,61 +179,40 @@ const Store = {
         }
     },
 
-    // Refresh data from Supabase (for real-time updates)
+    // Refresh data (for real-time updates)
     async refreshData() {
         try {
             const data = await DB.getData();
             if (data) {
-                const newUsers = (data.users || []).sort((a, b) => b.id - a.id);
-                const newLessons = (data.lessons || []).sort((a, b) => b.id - a.id);
-                const newCoupons = (data.coupons || []).sort((a, b) => b.id - a.id);
+                // Filter out system rows
+                const newUsers = (data.users || []).filter(u => u.username !== 'ANNOUNCEMENT_DATA').sort((a, b) => (b.id || 0) - (a.id || 0));
+                const newLessons = (data.lessons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
+                const newCoupons = (data.coupons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
 
-                // Anti-flicker: Only update if data actually changed
-                // For users, we ignore last_active and ip_address changes for general "changed" detection
-                // But we INCLUDE session_token for admins to catch login/logout events immediately
                 const isAdmin = this.state.currentUser && this.state.currentUser.role === 'admin';
                 const simplifyUser = u => ({
-                    id: u.id,
-                    username: u.username,
-                    role: u.role,
-                    status: u.status,
-                    is_active: u.is_active,
-                    expiry_date: u.expiry_date,
-                    session_token: isAdmin ? u.session_token : undefined // Catch login/logout for admin
+                    id: u.id, username: u.username, role: u.role, status: u.status,
+                    is_active: u.is_active, expiry_date: u.expiry_date,
+                    session_token: isAdmin ? u.session_token : undefined
                 });
 
                 const isUsersChanged = JSON.stringify(newUsers.map(simplifyUser)) !== JSON.stringify(this.state.users.map(simplifyUser));
                 const isLessonsChanged = JSON.stringify(newLessons) !== JSON.stringify(this.state.lessons);
                 const isCouponsChanged = JSON.stringify(newCoupons) !== JSON.stringify(this.state.coupons);
 
-                // Handle Announcement
-                const announceUser = newUsers.find(u => u.username === 'ANNOUNCEMENT_DATA');
-                let newAnnouncement = { text: '', buttonText: '', buttonUrl: '' };
-                if (announceUser && announceUser.password) {
-                    try {
-                        const parsed = JSON.parse(announceUser.password);
-                        newAnnouncement = {
-                            text: typeof parsed === 'object' ? (parsed.text || '') : (parsed || ''),
-                            buttonText: parsed.buttonText || '',
-                            buttonUrl: parsed.buttonUrl || ''
-                        };
-                    } catch (e) {
-                        newAnnouncement.text = announceUser.password;
-                    }
-                }
+                // Read announcement from dedicated field
+                const newAnnouncement = data.announcement || { text: '', buttonText: '', buttonUrl: '' };
                 const isAnnounceChanged = JSON.stringify(newAnnouncement) !== JSON.stringify(this.state.announcement);
 
-                // Admin-specific: Check if the number of online users has changed
+                // Admin-specific: online users count
                 let onlineCountChanged = false;
                 if (isAdmin) {
-                    const getOnlineCount = (users) => users.filter(u => u && u.role !== 'admin' && u.username !== 'ANNOUNCEMENT_DATA' && u.session_token && u.last_active && (new Date() - new Date(u.last_active.replace(' ', 'T')) < 3 * 60 * 1000)).length;
-                    if (getOnlineCount(newUsers) !== getOnlineCount(this.state.users)) {
-                        onlineCountChanged = true;
-                    }
+                    const getOnlineCount = (users) => users.filter(u => u && u.role !== 'admin' && u.session_token && u.last_active && (new Date() - new Date(u.last_active.replace(' ', 'T')) < 3 * 60 * 1000)).length;
+                    if (getOnlineCount(newUsers) !== getOnlineCount(this.state.users)) onlineCountChanged = true;
                 }
 
                 if (isUsersChanged || isLessonsChanged || isCouponsChanged || onlineCountChanged || isAnnounceChanged) {
-                    this.state.users = newUsers.filter(u => u.username !== 'ANNOUNCEMENT_DATA');
+                    this.state.users = newUsers;
                     this.state.announcement = newAnnouncement;
                     this.state.lessons = newLessons;
                     this.state.coupons = newCoupons;
@@ -246,7 +226,7 @@ const Store = {
                     // Session enforcement
                     if (this.state.currentUser && this.state.currentUser.role !== 'admin') {
                         const localToken = localStorage.getItem('v3_session_token');
-                        const serverUser = (newUsers || []).find(u => u.id == this.state.currentUser.id);
+                        const serverUser = newUsers.find(u => u.id == this.state.currentUser.id);
                         if (serverUser && localToken && serverUser.session_token && serverUser.session_token !== localToken) {
                             if (!window._sessionAlertActive) {
                                 window._sessionAlertActive = true;
@@ -255,7 +235,6 @@ const Store = {
                             }
                         }
                     }
-
                     return { changed: true, type };
                 } else {
                     this.state.users = newUsers;
@@ -303,34 +282,43 @@ const Store = {
     },
 
     async updateAnnouncement(announceObj) {
-        const text = JSON.stringify(announceObj);
-        // Find existing or create new
-        const rawData = await DB.getData();
-        let announceUser = rawData.users?.find(u => u.username === 'ANNOUNCEMENT_DATA');
-
-        if (announceUser) {
-            const result = await DB.updateUser(announceUser.id, { password: text });
+        try {
+            const res = await fetch('/api/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'update_announcement', payload: announceObj })
+            });
+            const result = await res.json();
             if (result.success) {
                 this.state.announcement = announceObj;
-                console.log('✅ تم حفظ الإعلان وتحديث المشتركات');
+                console.log('✅ تم حفظ الإعلان في Google Sheets');
                 if (announceObj.text) {
                     await this.broadcastBot(`🔔 <b>إعلان جديد في الموقع:</b>\n\n${announceObj.text}`);
                 }
             }
             return result;
-        } else {
-            // Create it if it doesn't exist
-            const result = await DB.addUser({
-                username: 'ANNOUNCEMENT_DATA',
-                password: text,
-                role: 'system',
-                status: 'active'
+        } catch (e) {
+            console.error('updateAnnouncement Error:', e);
+            return { success: false };
+        }
+    },
+
+    async deleteAnnouncement() {
+        try {
+            const res = await fetch('/api/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete_announcement', payload: {} })
             });
+            const result = await res.json();
             if (result.success) {
-                this.state.announcement = announceObj;
-                console.log('✅ تم إنشاء سجل إعلانات جديد');
+                this.state.announcement = { text: '', buttonText: '', buttonUrl: '' };
+                console.log('✅ تم حذف الإعلان من Google Sheets');
             }
             return result;
+        } catch (e) {
+            console.error('deleteAnnouncement Error:', e);
+            return { success: false };
         }
     },
 

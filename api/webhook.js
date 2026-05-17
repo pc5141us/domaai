@@ -1,11 +1,9 @@
 /**
  * Doma AI Bot - Vercel API Gateway (v2.9.6)
  */
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from './supabase-shim.js';
 
-const SUPABASE_URL = atob('aHR0cHM6Ly9sYWtnZGNzeXRvd25vaXlydmxpcS5zdXBhYmFzZS5jbw==');
-const SUPABASE_KEY = atob('c2JfcHVibGlzaGFibGVfT2IxUjF0Ql9TV3ctcDBWeUh6R3RKQV9mbjJCREthdQ==');
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = createClient();
 
 const BOT_TOKEN = '8598472216:AAE7gQmUpaWPeEgq7ZFlnTGuzedGUAQfFoU';
 const SUPER_ADMIN = '682572594';
