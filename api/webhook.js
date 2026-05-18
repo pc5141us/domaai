@@ -500,7 +500,7 @@ async function handleMessage(text, chatId = null) {
         if (state.targetId) {
             const { data: l } = await supabase.from('lessons').select('*').eq('id', state.targetId).single();
             if (l) {
-                await broadcast(`📖 <b>عنوان الدرس: ${l.title}</b>\n\n🔗 رابط المشاهدة:\nhttps://doma1.gt.tc/#lesson-${l.id}`);
+                await broadcast(`📖 <b>عنوان الدرس: ${l.title}</b>\n\n🔗 رابط المشاهدة:\nhttps://domaai.vercel.app/#lesson-${l.id}`);
                 return sendMsg("✅ تم إذاعة الدرس للطلاب بنجاح.", null, null, chatId);
             }
         }
@@ -812,7 +812,7 @@ async function handleMessage(text, chatId = null) {
             await clearState(chatId);
             const desc = input === 'لا يوجد' ? '' : input;
             const { data: newLesson } = await supabase.from('lessons').insert([{ title: state.tempTitle, url: state.tempUrl, description: desc, created_at: new Date().toISOString() }]).select().single();
-            await broadcast(`📖 <b>عنوان الدرس: ${state.tempTitle}</b>\n\n🔗 رابط المشاهدة:\nhttps://doma1.gt.tc/#lesson-${newLesson.id}`);
+            await broadcast(`📖 <b>عنوان الدرس: ${state.tempTitle}</b>\n\n🔗 رابط المشاهدة:\nhttps://domaai.vercel.app/#lesson-${newLesson.id}`);
             await saveState(chatId, { targetId: newLesson.id.toString(), action: 'viewing_lesson' });
             const kb = [[{ text: '✏️ تعديل الدرس' }, { text: '🗑️ حذف الدرس' }], [{ text: '📢 إذاعة للطلاب' }], [{ text: '🔙 رجوع' }]];
             return sendMsg(`✅ تم إضافة الدرس وإرسال تنبيه للطلاب!`, null, kb, chatId);

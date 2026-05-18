@@ -2,12 +2,11 @@
  * Modern LMS v3 - Database Layer (Google Sheets via API)
  */
 
-const isLocal = window.location.hostname === 'localhost' || 
-                window.location.hostname === '127.0.0.1' || 
-                window.location.hostname === '' ||
-                window.location.protocol === 'file:';
+const isVercel = window.location.hostname.endsWith('vercel.app') || 
+                 window.location.hostname === 'domaai.vercel.app' ||
+                 window.location.hostname === 'domaaibot.vercel.app';
 
-const API_URL = isLocal ? 'https://doma1.gt.tc' : '';
+const API_URL = isVercel ? '' : 'https://domaai.vercel.app';
 
 const DB = {
     async getData() {
