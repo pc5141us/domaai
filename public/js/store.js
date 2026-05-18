@@ -720,7 +720,7 @@ const Store = {
                             if (data.announcement) this.state.announcement = data.announcement;
                             
                             // Save to local cache
-                            localStorage.setItem('v3_data_cache', JSON.stringify({
+                            localStorage.setItem('v3_data', JSON.stringify({
                                 users: this.state.users,
                                 lessons: this.state.lessons,
                                 coupons: this.state.coupons,

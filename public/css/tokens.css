@@ -64,22 +64,32 @@
 .premium-bg::before {
     content: '';
     position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    background: radial-gradient(circle at 10% 20%, #1e1b29 0%, #111015 90%);
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(-45deg, #1C1B1F, #4A148C, #0D47A1, #311B92);
+    background-size: 200% 200%;
+    animation: mesh-gradient 30s ease-in-out infinite;
     z-index: -1;
+    will-change: transform;
+    transform: translateZ(0); /* Hardware Acceleration */
     pointer-events: none;
+    opacity: 0.6; /* Reduced opacity for better contrast */
 }
 
-/* Optimize for Mobile: Maintain beautiful high-performance background */
+/* Optimize for Mobile: Make background static and fixed */
 @media (max-width: 768px) {
     .premium-bg::before {
-        background: radial-gradient(circle at 50% 50%, #161420 0%, #0d0c0f 100%);
+        background: linear-gradient(-45deg, #1C1B1F, #311B92, #001A4D);
+        background-size: cover;
+        background-position: center;
+        animation: none !important; /* Disable movement/animation */
         position: fixed;
-        inset: 0;
+        inset: 0; /* Ensures full coverage (top, left, bottom, right 0) */
         width: 100%;
         height: 100%;
-        pointer-events: none;
+        transform: none !important;
+        will-change: auto;
     }
 }

@@ -55,12 +55,6 @@ const App = {
         this.setupInactivityTracking();
         this.startTimer();
 
-        // Reveal the application interface smoothly and fade out the preloader
-        const preloader = document.getElementById('v3-preloader');
-        const app = document.getElementById('v3-app');
-        if (preloader) preloader.classList.add('fade-out');
-        if (app) app.style.opacity = '1';
-
         // ── Step 3: Load fresh data in background (non-blocking) ──
         Store.init().then(() => {
             // Silently update UI if data changed
@@ -1247,8 +1241,8 @@ const App = {
             const INACTIVITY_LIMIT = 30 * 60 * 1000;
             if (Store.state.currentUser && (Date.now() - this.lastActivity > INACTIVITY_LIMIT)) {
                 console.warn('User inactive. Auto-logout.');
-                this.showToast('⚠️ تم تسجيل الخروج تلقائياً لعدم النشاط.', 'error');
-                setTimeout(() => this.handleLogout(), 2000);
+                await alert('تم تسجيل الخروج تلقائياً لعدم النشاط.');
+                this.handleLogout();
                 return;
             }
 
@@ -1264,18 +1258,13 @@ const App = {
                     el.textContent = 'انتهى الاشتراك';
                     el.style.color = 'var(--error)';
                 }
-                // If user is active but expiry is 0 or less, update DB once
-                if (Store.state.currentUser.is_active && !this._updatingExpiry) {
-                    this._updatingExpiry = true;
-                    DB.updateUser(Store.state.currentUser.id, { is_active: false }).then(result => {
-                        this._updatingExpiry = false;
-                        if (result.success) {
-                            Store.state.currentUser.is_active = false;
-                            this.render();
-                        }
-                    }).catch(() => {
-                        this._updatingExpiry = false;
-                    });
+                // If user is active but expiry is 0 or less, update DB
+                if (Store.state.currentUser.is_active) {
+                    const result = await DB.updateUser(Store.state.currentUser.id, { is_active: false });
+                    if (result.success) {
+                        Store.state.currentUser.is_active = false;
+                        this.render();
+                    }
                 }
                 return;
             }
@@ -1294,15 +1283,17 @@ const App = {
         const user = Store.state.currentUser;
         if (!user || user.role === 'admin') return;
 
-        // No need for a full network call every 5 seconds.
-        // We use the already-polled state users list, making this call local and instant.
+        // Refresh data from DB to get latest session tokens
+        await Store.refreshData();
+
+        // Find the remote version of this user
         const remoteUser = Store.state.users.find(u => u.id === user.id);
 
         if (!remoteUser) {
             // User was deleted from database
             console.warn('User no longer exists in database.');
-            this.showToast('⚠️ تم حذف حسابك. سيتم تسجيل الخروج.', 'error');
-            setTimeout(() => this.handleLogout(), 2500);
+            await alert('تم حذف حسابك. سيتم تسجيل الخروج.');
+            this.handleLogout();
             return;
         }
 
@@ -1314,8 +1305,8 @@ const App = {
 
         if (remoteUser.session_token && remoteUser.session_token !== localToken) {
             console.warn('Session mismatch: logged in from another device.');
-            this.showToast('⚠️ تم تسجيل الدخول من جهاز آخر. سيتم تسجيل الخروج.', 'error');
-            setTimeout(() => this.handleLogout(), 2500);
+            await alert('تم تسجيل الدخول من جهاز آخر. سيتم تسجيل الخروج من هذا الجهاز.');
+            this.handleLogout();
         }
     },
 
