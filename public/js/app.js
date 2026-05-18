@@ -657,6 +657,14 @@ const App = {
                     user.status = 'active';
                     user.expiry_date = updates.expiry_date;
                     localStorage.setItem('v3_user', JSON.stringify(user));
+
+                    // Update local users list state in-memory to prevent session check deactivation
+                    const dbUser = Store.state.users.find(u => u.id === user.id);
+                    if (dbUser) {
+                        dbUser.is_active = true;
+                        dbUser.status = 'active';
+                        dbUser.expiry_date = updates.expiry_date;
+                    }
                     
                     this.showToast('✅ تم تفعيل حسابك بنجاح! استمتع بالدراسة.', 'check_circle');
                     let durText = 'يوم';
@@ -668,8 +676,8 @@ const App = {
                     else if (dType === '1y') durText = 'سنة كاملة';
                     this.telegram.sendMessage(`✅ <b>تم تفعيل حساب طالب بالكود!</b>\n👤 الطالب: <code>${user.username}</code>\n🛡️ الباقة: ${durText}`);
 
-                    // Refresh dashboard after a short delay
-                    setTimeout(() => this.navigate('dashboard', null, false, true), 1500);
+                    // Navigate immediately without any delay!
+                    this.navigate('dashboard', null, false, true);
                 } else {
                     this.showToast('❌ عذراً، فشل التفعيل في الخادم. حاول ثانية.', 'error');
                 }
@@ -1297,7 +1305,9 @@ const App = {
         const user = Store.state.currentUser;
         if (!user || user.role === 'admin') return;
 
-        // No need for a full network call every 5 seconds.
+        // If user list hasn't loaded from server yet, do not perform session verification to avoid false deactivations
+        if (!Store.state.users || Store.state.users.length === 0) return;
+
         // We use the already-polled state users list, making this call local and instant.
         const remoteUser = Store.state.users.find(u => u.id === user.id);
 
@@ -1309,8 +1319,15 @@ const App = {
             return;
         }
 
-        // Update currentUser with latest data from server
-        Store.state.currentUser = { ...Store.state.currentUser, ...remoteUser };
+        // Update currentUser with latest data from server, but preserve local active state if we just activated
+        const updatedUser = { ...Store.state.currentUser, ...remoteUser };
+        if (Store.state.currentUser.is_active && !remoteUser.is_active) {
+            updatedUser.is_active = true;
+            updatedUser.status = 'active';
+            updatedUser.expiry_date = Store.state.currentUser.expiry_date;
+        }
+
+        Store.state.currentUser = updatedUser;
         localStorage.setItem('v3_user', JSON.stringify(Store.state.currentUser));
 
         const localToken = localStorage.getItem('v3_session_token');
