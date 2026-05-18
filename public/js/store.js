@@ -514,9 +514,18 @@ const Store = {
             return dbUname === inputUname && (dbPass === inputPass || dbPass.toLowerCase() === inputPass.toLowerCase());
         });
 
-        // Fallback: If user not found in local state, try refreshing from DB first in case local list is stale
-        if (!user) {
-            console.log('User not found in local cache, refreshing data from server...');
+        // Fallback: If user not found, or user is pending activation, or credentials mismatch,
+        // refresh data from server to get the absolute latest status/user list
+        const credentialsMatch = user && (() => {
+            const dbUname = String(user.username).trim().toLowerCase();
+            const dbPass = String(user.password).trim();
+            const inputUname = uname.trim().toLowerCase();
+            const inputPass = String(password).trim();
+            return dbUname === inputUname && (dbPass === inputPass || dbPass.toLowerCase() === inputPass.toLowerCase());
+        })();
+
+        if (!user || user.status === 'pending' || !credentialsMatch) {
+            console.log('Refreshing data from server to verify latest user credentials and status...');
             await this.refreshData();
             user = this.state.users.find(u => {
                 if (!u.username || !u.password) return false;
