@@ -654,13 +654,13 @@ const Store = {
     async deleteCoupon(id) {
         const result = await DB.deleteCoupon(id);
         if (result.success) {
-            this.state.coupons = this.state.coupons.filter(c => c.id !== id);
+            this.state.coupons = this.state.coupons.filter(c => String(c.id) !== String(id));
         }
         return result;
     },
 
     async updateLesson(id, title, url, description) {
-        const lesson = this.state.lessons.find(l => l.id === id);
+        const lesson = this.state.lessons.find(l => String(l.id) === String(id));
         if (!lesson) return { success: false };
 
         const result = await DB.updateLesson(id, { title, url, description });

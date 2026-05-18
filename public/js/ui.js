@@ -202,7 +202,7 @@ const UI = {
         }
 
         return filteredLessons.map(l => `
-            <div class="card-premium" onclick="App.playVideo(${l.id})" style="cursor: pointer;">
+            <div class="card-premium" onclick="App.playVideo('${l.id}')" style="cursor: pointer;">
                 <div style="width: 100%; aspect-ratio: 16/9; background: url('${App.getThumbnail(l.url)}') center/cover no-repeat; border-radius: 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
                     <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;">
                         <span class="material-icons" style="font-size: 48px; color: var(--primary); text-shadow: 0 4px 20px rgba(0,0,0,0.5);">play_circle</span>
@@ -468,13 +468,13 @@ const UI = {
                 <span style="color: var(--on-surface-variant); font-size: 12px;">${i + 1}</span>
                 <div style="font-weight: 500;">${l.title}</div>
                 <div style="display: flex; gap: 8px; justify-content: center;">
-                    <button class="btn-glass" style="width: 32px; height: 32px; padding: 0; color: var(--primary);" onclick="App.playVideo(${l.id})">
+                    <button class="btn-glass" style="width: 32px; height: 32px; padding: 0; color: var(--primary);" onclick="App.playVideo('${l.id}')">
                         <span class="material-icons" style="font-size: 18px;">play_circle</span>
                     </button>
-                    <button class="btn-glass" style="width: 32px; height: 32px; padding: 0; color: var(--primary-container);" onclick="App.showEditLesson(${l.id})">
+                    <button class="btn-glass" style="width: 32px; height: 32px; padding: 0; color: var(--primary-container);" onclick="App.showEditLesson('${l.id}')">
                         <span class="material-icons" style="font-size: 18px;">edit</span>
                     </button>
-                    <button class="btn-glass" style="width: 32px; height: 32px; padding: 0; color: var(--error);" onclick="App.deleteLesson(${l.id})">
+                    <button class="btn-glass" style="width: 32px; height: 32px; padding: 0; color: var(--error);" onclick="App.deleteLesson('${l.id}')">
                         <span class="material-icons" style="font-size: 18px;">delete</span>
                     </button>
                 </div>

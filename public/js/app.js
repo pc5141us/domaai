@@ -887,9 +887,8 @@ const App = {
         }
     },
 
-    // Lesson Edit
     showEditLesson(id) {
-        const lesson = Store.state.lessons.find(l => l.id === id);
+        const lesson = Store.state.lessons.find(l => String(l.id) === String(id));
         if (!lesson) return;
         document.getElementById('edit-lesson-dialog').classList.add('md-dialog-overlay--active');
         document.getElementById('v3-edit-id').value = lesson.id;
@@ -900,7 +899,7 @@ const App = {
     },
     closeEditLesson() { document.getElementById('edit-lesson-dialog').classList.remove('md-dialog-overlay--active'); },
     async confirmEditLesson() {
-        const id = parseInt(document.getElementById('v3-edit-id').value);
+        const id = document.getElementById('v3-edit-id').value;
         const t = document.getElementById('v3-edit-title').value;
         const u = document.getElementById('v3-edit-url').value;
         const d = document.getElementById('v3-edit-desc') ? document.getElementById('v3-edit-desc').value : '';
@@ -1367,7 +1366,7 @@ const App = {
         } else if (type === 'lesson') {
             const result = await DB.deleteLesson(id);
             if (result.success) {
-                Store.state.lessons = Store.state.lessons.filter(l => l.id !== id);
+                Store.state.lessons = Store.state.lessons.filter(l => String(l.id) !== String(id));
                 this.render();
             }
         } else if (type === 'user') {
