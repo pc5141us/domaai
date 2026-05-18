@@ -39,14 +39,11 @@ const Store = {
             const cached = localStorage.getItem('v3_data_cache');
             if (cached) {
                 const { users, lessons, coupons, announcement, ts } = JSON.parse(cached);
-                // Only use cache if less than 5 minutes old
-                if (Date.now() - ts < 5 * 60 * 1000) {
-                    if (users) this.state.users = users;
-                    if (lessons) this.state.lessons = lessons;
-                    if (coupons) this.state.coupons = coupons;
-                    if (announcement) this.state.announcement = announcement;
-                    console.log('⚡ Restored from cache instantly');
-                }
+                if (users) this.state.users = users;
+                if (lessons) this.state.lessons = lessons;
+                if (coupons) this.state.coupons = coupons;
+                if (announcement) this.state.announcement = announcement;
+                console.log('⚡ Restored from cache instantly');
             }
         } catch (e) { /* ignore cache errors */ }
 
@@ -318,7 +315,7 @@ const Store = {
     // User Actions
     async register(username, password) {
         const uname = username.trim().toLowerCase();
-        if (this.state.users.find(u => u.username && u.username.toLowerCase() === uname)) {
+        if (this.state.users.find(u => u.username && String(u.username).trim().toLowerCase() === uname)) {
             return { success: false, message: 'اسم المستخدم موجود بالفعل' };
         }
 
@@ -508,14 +505,35 @@ const Store = {
             return { success: true, role: 'admin' };
         }
         // Google Sheets can auto-convert numeric values to numbers, so use String() comparison
-        const user = this.state.users.find(u =>
-            u.username &&
-            String(u.username).toLowerCase() === uname &&
-            String(u.password) === String(password)
-        );
+        let user = this.state.users.find(u => {
+            if (!u.username || !u.password) return false;
+            const dbUname = String(u.username).trim().toLowerCase();
+            const dbPass = String(u.password).trim();
+            const inputUname = uname.trim().toLowerCase();
+            const inputPass = String(password).trim();
+            return dbUname === inputUname && (dbPass === inputPass || dbPass.toLowerCase() === inputPass.toLowerCase());
+        });
+
+        // Fallback: If user not found in local state, try refreshing from DB first in case local list is stale
+        if (!user) {
+            console.log('User not found in local cache, refreshing data from server...');
+            await this.refreshData();
+            user = this.state.users.find(u => {
+                if (!u.username || !u.password) return false;
+                const dbUname = String(u.username).trim().toLowerCase();
+                const dbPass = String(u.password).trim();
+                const inputUname = uname.trim().toLowerCase();
+                const inputPass = String(password).trim();
+                return dbUname === inputUname && (dbPass === inputPass || dbPass.toLowerCase() === inputPass.toLowerCase());
+            });
+        }
+
         if (user) {
             if (user.status === 'banned') return { success: false, message: 'تم حظر حسابك. يرجى التواصل مع الإدارة.' };
             if (user.status === 'pending') return { success: false, message: 'حسابك قيد المراجعة. يرجى انتظار تفعيل الإدارة.' };
+
+            // Generate unique session token
+            const token = Date.now().toString(36) + Math.random().toString(36).substring(2, 15);
 
             // Update local state immediately (no need to wait for DB)
             const nowIso = new Date().toISOString();
@@ -720,7 +738,7 @@ const Store = {
                             if (data.announcement) this.state.announcement = data.announcement;
                             
                             // Save to local cache
-                            localStorage.setItem('v3_data', JSON.stringify({
+                            localStorage.setItem('v3_data_cache', JSON.stringify({
                                 users: this.state.users,
                                 lessons: this.state.lessons,
                                 coupons: this.state.coupons,
