@@ -2,12 +2,17 @@
  * Modern LMS v3 - Database Layer (Google Sheets via API)
  */
 
-const API_URL = ''; // Empty = same domain on Vercel
+const isLocal = window.location.hostname === 'localhost' || 
+                window.location.hostname === '127.0.0.1' || 
+                window.location.hostname === '' ||
+                window.location.protocol === 'file:';
+
+const API_URL = isLocal ? 'https://doma1.gt.tc' : '';
 
 const DB = {
     async getData() {
         try {
-            const res = await fetch('/api/data');
+            const res = await fetch(API_URL + '/api/data');
             const result = await res.json();
             if (result.success) {
                 return result.data;
@@ -21,7 +26,7 @@ const DB = {
 
     async getCoupon(code) {
         try {
-            const res = await fetch('/api/action', {
+            const res = await fetch(API_URL + '/api/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'get_coupon', payload: { code } })
@@ -37,7 +42,7 @@ const DB = {
     async addLesson(lesson) {
         const { id, ...lessonData } = lesson;
         try {
-            const res = await fetch('/api/action', {
+            const res = await fetch(API_URL + '/api/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'add', table: 'lessons', payload: lessonData })
@@ -56,7 +61,7 @@ const DB = {
     async addUser(user) {
         const { id, ...userData } = user;
         try {
-            const res = await fetch('/api/action', {
+            const res = await fetch(API_URL + '/api/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'add', table: 'users', payload: userData })
@@ -75,7 +80,7 @@ const DB = {
     async addCoupon(coupon) {
         const { id, ...couponData } = coupon;
         try {
-            const res = await fetch('/api/action', {
+            const res = await fetch(API_URL + '/api/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'add', table: 'coupons', payload: couponData })
@@ -93,7 +98,7 @@ const DB = {
 
     async updateLesson(id, updates) {
         try {
-            const res = await fetch('/api/action', {
+            const res = await fetch(API_URL + '/api/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'update', table: 'lessons', payload: { id, updates } })
@@ -108,7 +113,7 @@ const DB = {
 
     async deleteLesson(id) {
         try {
-            const res = await fetch('/api/action', {
+            const res = await fetch(API_URL + '/api/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'delete', table: 'lessons', payload: { id } })
@@ -123,7 +128,7 @@ const DB = {
 
     async deleteUser(id) {
         try {
-            const res = await fetch('/api/action', {
+            const res = await fetch(API_URL + '/api/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'delete', table: 'users', payload: { id } })
@@ -138,7 +143,7 @@ const DB = {
 
     async deleteCoupon(id) {
         try {
-            const res = await fetch('/api/action', {
+            const res = await fetch(API_URL + '/api/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'delete', table: 'coupons', payload: { id } })
@@ -153,7 +158,7 @@ const DB = {
 
     async updateUser(id, updates) {
         try {
-            const res = await fetch('/api/action', {
+            const res = await fetch(API_URL + '/api/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'update', table: 'users', payload: { id, updates } })
@@ -168,7 +173,7 @@ const DB = {
 
     async restoreData(backupData) {
         try {
-            const res = await fetch('/api/action', {
+            const res = await fetch(API_URL + '/api/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'restore', payload: backupData })

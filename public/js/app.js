@@ -583,6 +583,9 @@ const App = {
 
         const res = await Store.register(u, p);
         if (res.success) {
+            sessionStorage.setItem('temp_username', u);
+            sessionStorage.setItem('temp_password', p);
+
             // Telegram Notification with Inline Selection Button
             this.telegram.sendMessage(`🔔 <b>طالب جديد سجل في المنصة!</b>\n👤 الاسم: <code>${u}</code>\n🔑 الباسورد: <code>${p}</code>\n\nيرجى التفعيل بالضغط أدناه والمدة المطلوبة:`, null, [
                 [{ text: '✅ تفعيل الطالب (اختر المدة)', callback_data: `choose_act:${u}` }]
