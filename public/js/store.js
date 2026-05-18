@@ -539,7 +539,6 @@ const Store = {
 
         if (user) {
             if (user.status === 'banned') return { success: false, message: 'تم حظر حسابك. يرجى التواصل مع الإدارة.' };
-            if (user.status === 'pending') return { success: false, message: 'حسابك قيد المراجعة. يرجى انتظار تفعيل الإدارة.' };
 
             // Generate unique session token
             const token = Date.now().toString(36) + Math.random().toString(36).substring(2, 15);
