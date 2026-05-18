@@ -117,9 +117,9 @@ const UI = {
             return `
                 <div class="container hero" style="padding-top: 100px;">
                     <div class="card-premium" style="max-width: 500px; text-align: center;">
-                        <span class="material-symbols-outlined" style="font-size: 80px; color: var(--error);">lock_open</span>
-                        <h2 style="margin: 20px 0;">حسابك ينتظر التفعيل</h2>
-                        <p style="margin-bottom: 24px;">يرجى التواصل مع الإدارة لتفعيل حسابك والبدء في الدراسة.</p>
+                        <span class="material-symbols-outlined" style="font-size: 80px; color: var(--primary);">key</span>
+                        <h2 style="margin: 20px 0;">تنشيط الحساب</h2>
+                        <p style="margin-bottom: 24px; color: var(--on-surface-variant);">يرجى تفعيل حسابك باستخدام كود التفعيل، أو التواصل مع الإدارة للبدء في الدراسة.</p>
                         
                         <div style="display: flex; gap: 12px; margin-top: 16px;">
                             <a href="https://t.me/Domaphone" target="_blank" class="btn btn-primary" style="flex: 1; text-decoration: none; background: #0088cc; box-shadow: 0 4px 15px rgba(0, 136, 204, 0.3);">
