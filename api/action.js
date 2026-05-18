@@ -1,4 +1,4 @@
-import { addRecord, updateRecord, deleteRecord, getRecordByField, updateAnnouncement, deleteAnnouncement } from './gsheets.js';
+import { addRecord, updateRecord, deleteRecord, getRecordByField, updateAnnouncement, deleteAnnouncement, appsPost } from './gsheets.js';
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
@@ -8,6 +8,10 @@ export default async function handler(req, res) {
     try {
         let result;
         switch (action) {
+            case 'restore':
+                const successRestore = await appsPost({ action: 'restore', payload });
+                return res.status(200).json({ success: successRestore.success });
+
             case 'add':
                 result = await addRecord(table, payload);
                 return res.status(200).json({ success: true, data: result });

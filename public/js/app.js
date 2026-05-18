@@ -30,32 +30,42 @@ const App = {
 
     async init() {
         console.log('🚀 Doma AI v2.9.6 Initializing...');
-        await Store.init();
 
-        // Inject Modals Container
+        // ── Step 1: Restore state from localStorage INSTANTLY (no network) ──
+        Store.restoreFromCache();
+
+        // ── Step 2: Inject modals and render the UI immediately ──
         const modalsContainer = document.getElementById('v3-modals-container');
         if (modalsContainer) modalsContainer.innerHTML = UI.modals(Store.state);
 
-        // Register Back Button Handler
         window.addEventListener('popstate', (e) => this.handlePopState(e));
 
-        // Initial Navigation
         const hash = window.location.hash.replace('#', '');
         const savedView = localStorage.getItem('v3_view') || 'landing';
-
         if (hash) {
             const [view, id] = hash.split('-');
-            this.navigate(view, id || null, true, true); // replace initial state
+            this.navigate(view, id || null, true, true);
         } else {
-            this.navigate(savedView, null, true, true); // replace initial state
+            this.navigate(savedView, null, true, true);
         }
 
-        this.render(true); // Ensure scroll restoration on refresh
-
+        this.render(true);
         this.setupListeners();
         this.setupNumberConversion();
         this.setupInactivityTracking();
         this.startTimer();
+
+        // Reveal the application interface smoothly and fade out the preloader
+        const preloader = document.getElementById('v3-preloader');
+        const app = document.getElementById('v3-app');
+        if (preloader) preloader.classList.add('fade-out');
+        if (app) app.style.opacity = '1';
+
+        // ── Step 3: Load fresh data in background (non-blocking) ──
+        Store.init().then(() => {
+            // Silently update UI if data changed
+            this.smartRender();
+        }).catch(e => console.warn('Background data load error:', e));
     },
 
     setupInactivityTracking() {
@@ -1180,10 +1190,22 @@ const App = {
     },
 
     async handleImport(input) {
-        if (input.files[0] && await confirm('هل أنت متأكد؟ سيتم استبدال الداتا الحالية ببيانات الملف.')) {
-            const res = await Store.importData(input.files[0]);
-            if (res.success) location.reload();
-            else alert(res.msg);
+        if (input.files[0] && await confirm('هل أنت متأكد؟ سيتم استبدال الداتا الحالية ببيانات ملف النسخة الاحتياطية بالكامل.')) {
+            try {
+                this.showToast('جاري استعادة النسخة الاحتياطية... يرجى عدم إغلاق الصفحة.', 'sync');
+                const res = await Store.importData(input.files[0]);
+                if (res.success) {
+                    this.showToast('✅ تم استعادة البيانات بنجاح! جاري تحديث الصفحة...', 'check_circle');
+                    setTimeout(() => {
+                        location.reload();
+                    }, 2000);
+                } else {
+                    this.showToast('❌ ' + (res.msg || 'فشل استعادة البيانات'), 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                this.showToast('❌ حدث خطأ غير متوقع أثناء استعادة البيانات', 'error');
+            }
         }
     },
 
@@ -1225,8 +1247,8 @@ const App = {
             const INACTIVITY_LIMIT = 30 * 60 * 1000;
             if (Store.state.currentUser && (Date.now() - this.lastActivity > INACTIVITY_LIMIT)) {
                 console.warn('User inactive. Auto-logout.');
-                await alert('تم تسجيل الخروج تلقائياً لعدم النشاط.');
-                this.handleLogout();
+                this.showToast('⚠️ تم تسجيل الخروج تلقائياً لعدم النشاط.', 'error');
+                setTimeout(() => this.handleLogout(), 2000);
                 return;
             }
 
@@ -1242,13 +1264,18 @@ const App = {
                     el.textContent = 'انتهى الاشتراك';
                     el.style.color = 'var(--error)';
                 }
-                // If user is active but expiry is 0 or less, update DB
-                if (Store.state.currentUser.is_active) {
-                    const result = await DB.updateUser(Store.state.currentUser.id, { is_active: false });
-                    if (result.success) {
-                        Store.state.currentUser.is_active = false;
-                        this.render();
-                    }
+                // If user is active but expiry is 0 or less, update DB once
+                if (Store.state.currentUser.is_active && !this._updatingExpiry) {
+                    this._updatingExpiry = true;
+                    DB.updateUser(Store.state.currentUser.id, { is_active: false }).then(result => {
+                        this._updatingExpiry = false;
+                        if (result.success) {
+                            Store.state.currentUser.is_active = false;
+                            this.render();
+                        }
+                    }).catch(() => {
+                        this._updatingExpiry = false;
+                    });
                 }
                 return;
             }
@@ -1267,17 +1294,15 @@ const App = {
         const user = Store.state.currentUser;
         if (!user || user.role === 'admin') return;
 
-        // Refresh data from DB to get latest session tokens
-        await Store.refreshData();
-
-        // Find the remote version of this user
+        // No need for a full network call every 5 seconds.
+        // We use the already-polled state users list, making this call local and instant.
         const remoteUser = Store.state.users.find(u => u.id === user.id);
 
         if (!remoteUser) {
             // User was deleted from database
             console.warn('User no longer exists in database.');
-            await alert('تم حذف حسابك. سيتم تسجيل الخروج.');
-            this.handleLogout();
+            this.showToast('⚠️ تم حذف حسابك. سيتم تسجيل الخروج.', 'error');
+            setTimeout(() => this.handleLogout(), 2500);
             return;
         }
 
@@ -1289,8 +1314,8 @@ const App = {
 
         if (remoteUser.session_token && remoteUser.session_token !== localToken) {
             console.warn('Session mismatch: logged in from another device.');
-            await alert('تم تسجيل الدخول من جهاز آخر. سيتم تسجيل الخروج من هذا الجهاز.');
-            this.handleLogout();
+            this.showToast('⚠️ تم تسجيل الدخول من جهاز آخر. سيتم تسجيل الخروج.', 'error');
+            setTimeout(() => this.handleLogout(), 2500);
         }
     },
 

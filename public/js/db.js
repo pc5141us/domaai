@@ -166,6 +166,21 @@ const DB = {
         }
     },
 
+    async restoreData(backupData) {
+        try {
+            const res = await fetch('/api/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'restore', payload: backupData })
+            });
+            const result = await res.json();
+            return { success: result.success };
+        } catch (error) {
+            console.error('restoreData Error:', error);
+            return { success: false, error };
+        }
+    },
+
     // Real-time sync is handled by polling in store.js
     onDataChange(callback) {
         return () => {};

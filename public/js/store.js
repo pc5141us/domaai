@@ -33,6 +33,36 @@ const Store = {
         announcement: { text: '', buttonText: '', buttonUrl: '' }
     },
 
+    // ── Instant restore from localStorage (zero network, zero wait) ──
+    restoreFromCache() {
+        try {
+            const cached = localStorage.getItem('v3_data_cache');
+            if (cached) {
+                const { users, lessons, coupons, announcement, ts } = JSON.parse(cached);
+                // Only use cache if less than 5 minutes old
+                if (Date.now() - ts < 5 * 60 * 1000) {
+                    if (users) this.state.users = users;
+                    if (lessons) this.state.lessons = lessons;
+                    if (coupons) this.state.coupons = coupons;
+                    if (announcement) this.state.announcement = announcement;
+                    console.log('⚡ Restored from cache instantly');
+                }
+            }
+        } catch (e) { /* ignore cache errors */ }
+
+        // Always restore current user from localStorage
+        try {
+            const u = localStorage.getItem('v3_user');
+            if (u) this.state.currentUser = JSON.parse(u);
+        } catch (e) { this.state.currentUser = null; }
+
+        // Restore scroll positions
+        try {
+            const s = localStorage.getItem('v3_scroll');
+            if (s) this.state.scrollPositions = JSON.parse(s);
+        } catch (e) { this.state.scrollPositions = {}; }
+    },
+
     async broadcastBot(message) {
         try {
             await fetch('/api/webhook', {
@@ -49,7 +79,7 @@ const Store = {
 
     async init() {
         try {
-            // Load data from Server
+            // Load fresh data from Server
             const data = await DB.getData();
 
             if (data) {
@@ -57,10 +87,22 @@ const Store = {
                 this.state.lessons = (data.lessons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
                 this.state.coupons = (data.coupons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
                 if (data.announcement) this.state.announcement = data.announcement;
+
+                // Save to localStorage cache for instant next load
+                try {
+                    localStorage.setItem('v3_data_cache', JSON.stringify({
+                        users: this.state.users,
+                        lessons: this.state.lessons,
+                        coupons: this.state.coupons,
+                        announcement: this.state.announcement,
+                        ts: Date.now()
+                    }));
+                } catch (e) { /* storage quota exceeded - ignore */ }
             }
         } catch (e) {
-            console.log('Server offline, using empty state');
+            console.log('⚠️ Server fetch failed, using cached state');
         }
+
 
         // Session user stays in localStorage for convenience
         this.state.currentUser = JSON.parse(localStorage.getItem('v3_user')) || null;
@@ -97,19 +139,39 @@ const Store = {
             });
         });
 
-        // Background Polling Fallback (Fast 1s poll for instant conversations/announcements)
-        setInterval(() => {
-            this.refreshData().then(({ changed, type }) => {
-                if (changed && window.App) {
-                    if (type === 'announcement') {
-                        console.log('⚡ High-Speed Sync: Announcement Updated');
-                        window.App.refreshAnnouncementOnly();
-                    } else {
-                        window.App.smartRender();
+        // Background Polling - every 15 seconds (was 1s which caused heavy lag)
+        // Slows to 30s when tab is hidden to save resources
+        let _pollInterval = 15000;
+        const _startPolling = () => {
+            clearInterval(window._pollTimer);
+            window._pollTimer = setInterval(() => {
+                this.refreshData().then(({ changed, type }) => {
+                    if (changed && window.App) {
+                        if (type === 'announcement') {
+                            window.App.refreshAnnouncementOnly();
+                        } else {
+                            window.App.smartRender();
+                        }
                     }
-                }
-            });
-        }, 1000);
+                });
+            }, _pollInterval);
+        };
+
+        // Pause/slow polling when tab is not visible
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                _pollInterval = 60000; // 1 min when hidden
+            } else {
+                _pollInterval = 15000; // 15s when visible
+                // Refresh immediately when user comes back
+                this.refreshData().then(({ changed }) => {
+                    if (changed && window.App) window.App.smartRender();
+                });
+            }
+            _startPolling();
+        });
+
+        _startPolling();
 
         // Start heartbeat if user already logged in
         if (this.state.currentUser && this.state.currentUser.role !== 'admin') {
@@ -445,70 +507,47 @@ const Store = {
             localStorage.setItem('v3_user', JSON.stringify(admin));
             return { success: true, role: 'admin' };
         }
-        const user = this.state.users.find(u => u.username && u.username.toLowerCase() === uname && u.password === password);
+        // Google Sheets can auto-convert numeric values to numbers, so use String() comparison
+        const user = this.state.users.find(u =>
+            u.username &&
+            String(u.username).toLowerCase() === uname &&
+            String(u.password) === String(password)
+        );
         if (user) {
             if (user.status === 'banned') return { success: false, message: 'تم حظر حسابك. يرجى التواصل مع الإدارة.' };
+            if (user.status === 'pending') return { success: false, message: 'حسابك قيد المراجعة. يرجى انتظار تفعيل الإدارة.' };
 
-            // Generate Session Token
-            const token = Date.now() + '_' + Math.random().toString(36).substr(2);
-
-            // Fetch IP Address
-            const ip = await this.getIP();
-
-            // Update DB with token and IP (Try full update first)
-            let updates = {
-                session_token: token,
-                last_active: new Date().toISOString(),
-                ip_address: ip
-            };
-
-            let updateRes = await DB.updateUser(user.id, updates);
-
-            if (!updateRes.success) {
-                console.warn('⚠️ Full login sync failed, trying essential fields only...');
-                // Fallback: Try without ip_address in case column is missing
-                const { ip_address, ...essentialUpdates } = updates;
-                updateRes = await DB.updateUser(user.id, essentialUpdates);
-
-                if (!updateRes.success) {
-                    console.error('❌ Login Sync Failed:', updateRes.error);
-                    const errorMsg = updateRes.error?.message || 'Unknown Error';
-                    alert(`⚠️ فشل التزامن: ${errorMsg}\nتأكد من وجود عامودي last_active و session_token في Supabase.`);
-                } else {
-                    console.log('✅ Essential login sync succeeded (ip_address column likely missing)');
-                }
-            }
-
-            // Sync local state (Update local even if DB fails for visual feedback)
-            const nowIso = updates.last_active;
-
-            // Critical: Update the user object with new session data
+            // Update local state immediately (no need to wait for DB)
+            const nowIso = new Date().toISOString();
             user.session_token = token;
-            user.ip_address = ip;
             user.last_active = nowIso;
 
             this.state.currentUser = user;
             localStorage.setItem('v3_user', JSON.stringify(user));
-            localStorage.setItem('v3_session_token', token); // Local unique token
+            localStorage.setItem('v3_session_token', token);
 
-            // Also update the matching user in the list for immediate UI feedback
             const userInList = this.state.users.find(x => x.id === user.id);
             if (userInList) {
                 userInList.last_active = nowIso;
                 userInList.session_token = token;
-                if (updates.ip_address) userInList.ip_address = updates.ip_address;
             }
 
             // Broadcast to all other tabs/windows to logout
             if (sessionBroadcast) {
-                sessionBroadcast.postMessage({
-                    type: 'LOGOUT_OTHER_SESSIONS',
-                    userId: user.id
-                });
+                sessionBroadcast.postMessage({ type: 'LOGOUT_OTHER_SESSIONS', userId: user.id });
             }
 
-            // Start heartbeat to keep last_active updated and maintain online status
+            // Start heartbeat
             this.startHeartbeat();
+
+            // Fire DB sync in background - don't block login
+            this.getIP().then(ip => {
+                DB.updateUser(user.id, {
+                    session_token: token,
+                    last_active: nowIso,
+                    ip_address: ip
+                }).catch(e => console.warn('Login sync error (non-critical):', e));
+            });
 
             return { success: true, role: user.role };
         }
@@ -665,16 +704,40 @@ const Store = {
                     const data = JSON.parse(e.target.result);
                     // Minimal validation
                     if (data.users && data.lessons) {
-                        // WARNING: Replacing state on a remote Supabase DB is complex.
-                        // For now, we only update the local state for session preview.
-                        // A true migration tool would need to clear and re-insert into Supabase.
-                        this.state = { ...this.state, ...data };
-                        resolve({ success: true, msg: 'تم استيراد البيانات محلياً. للمزامنة الدائمة، يرجى التواصل مع الدعم.' });
+                        // Call DB.restoreData to restore on Google Sheets
+                        const res = await DB.restoreData({
+                            users: data.users || [],
+                            lessons: data.lessons || [],
+                            coupons: data.coupons || [],
+                            announcement: data.announcement || null
+                        });
+                        
+                        if (res && res.success) {
+                            // Update local state
+                            this.state.users = (data.users || []).filter(u => u.username !== 'ANNOUNCEMENT_DATA').sort((a, b) => (b.id || 0) - (a.id || 0));
+                            this.state.lessons = (data.lessons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
+                            this.state.coupons = (data.coupons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
+                            if (data.announcement) this.state.announcement = data.announcement;
+                            
+                            // Save to local cache
+                            localStorage.setItem('v3_data_cache', JSON.stringify({
+                                users: this.state.users,
+                                lessons: this.state.lessons,
+                                coupons: this.state.coupons,
+                                announcement: this.state.announcement,
+                                ts: Date.now()
+                            }));
+                            
+                            resolve({ success: true, msg: 'تم استعادة النسخة الاحتياطية وتحديث قاعدة البيانات بنجاح!' });
+                        } else {
+                            reject({ success: false, msg: 'فشل رفع البيانات إلى Google Sheets' });
+                        }
                     } else {
-                        reject({ success: false, msg: 'ملف غير متوافق' });
+                        reject({ success: false, msg: 'ملف غير متوافق أو لا يحتوي على هيكل البيانات الصحيح' });
                     }
                 } catch (err) {
-                    reject({ success: false, msg: 'خطأ في قراءة الملف' });
+                    console.error('Import Error:', err);
+                    reject({ success: false, msg: 'خطأ في قراءة وتحليل ملف الجيسون' });
                 }
             };
             reader.readAsText(file);
@@ -686,7 +749,7 @@ window.Store = Store;
 
 // Heartbeat utilities (keeps last_active updated and online count accurate)
 Store._heartbeatTimer = null;
-Store.startHeartbeat = function (intervalMs = 20000) {
+Store.startHeartbeat = function (intervalMs = 60000) {
     this.stopHeartbeat();
     if (!this.state.currentUser || this.state.currentUser.role === 'admin') return;
 

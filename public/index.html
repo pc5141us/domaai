@@ -30,7 +30,20 @@
 
 <body class="premium-bg">
 
-    <div id="v3-app">
+    <!-- Premium Glow Preloader -->
+    <div id="v3-preloader">
+        <div class="preloader-spinner">
+            <div class="logo display-font" style="font-size: 32px; font-weight: 800; cursor: pointer; letter-spacing: 1px; color: #FFF;">
+                DOMA<span style="color: var(--primary);"> AI</span>
+            </div>
+            <div class="preloader-glow"></div>
+            <div class="preloader-bar">
+                <div class="preloader-progress"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="v3-app" style="opacity: 0; transition: opacity 0.4s ease;">
         <!-- Persistent Navigation -->
         <nav id="v3-nav">
             <div class="container"
