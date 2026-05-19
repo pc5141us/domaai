@@ -22,6 +22,14 @@ export async function appsPost(body) {
     return await res.json();
 }
 
+function toNumericIfPossible(val) {
+    if (typeof val === 'string' && val.trim() !== '') {
+        const num = Number(val);
+        if (!isNaN(num)) return num;
+    }
+    return val;
+}
+
 export async function getAllData() {
     const result = await appsGet({ action: 'getAll' });
     if (result.success) return result.data;
@@ -30,34 +38,40 @@ export async function getAllData() {
 
 export async function addRecord(table, record) {
     if (!record.id) record.id = Date.now().toString();
+    if (record.id) record.id = toNumericIfPossible(record.id);
     const result = await appsPost({ action: 'add', table, payload: record });
     if (!result.success) throw new Error(result.error || 'Failed to add record');
     return result.data || record;
 }
 
 export async function updateRecord(table, id, updates) {
-    const result = await appsPost({ action: 'update', table, payload: { id, updates } });
+    const finalId = toNumericIfPossible(id);
+    const result = await appsPost({ action: 'update', table, payload: { id: finalId, updates } });
     return result.success || false;
 }
 
 export async function deleteRecord(table, id) {
-    const result = await appsPost({ action: 'delete', table, payload: { id } });
+    const finalId = toNumericIfPossible(id);
+    const result = await appsPost({ action: 'delete', table, payload: { id: finalId } });
     return result.success || false;
 }
 
 export async function updateRecordByField(table, fieldName, fieldValue, updates) {
-    const result = await appsPost({ action: 'updateByField', table, payload: { fieldName, fieldValue, updates } });
+    const finalVal = toNumericIfPossible(fieldValue);
+    const result = await appsPost({ action: 'updateByField', table, payload: { fieldName, fieldValue: finalVal, updates } });
     return result.success || false;
 }
 
 export async function getRecordByField(table, fieldName, fieldValue) {
-    const result = await appsPost({ action: 'getByField', table, payload: { fieldName, fieldValue } });
+    const finalVal = toNumericIfPossible(fieldValue);
+    const result = await appsPost({ action: 'getByField', table, payload: { fieldName, fieldValue: finalVal } });
     if (result.success) return result.data;
     return null;
 }
 
 export async function deleteRecordByField(table, fieldName, fieldValue) {
-    const result = await appsPost({ action: 'deleteByField', table, payload: { fieldName, fieldValue } });
+    const finalVal = toNumericIfPossible(fieldValue);
+    const result = await appsPost({ action: 'deleteByField', table, payload: { fieldName, fieldValue: finalVal } });
     return result.success || false;
 }
 

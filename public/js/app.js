@@ -976,9 +976,15 @@ const App = {
             else if (duration === '1y') newExpiry.setFullYear(newExpiry.getFullYear() + 1);
         }
 
-        const result = await Store.updateUser(user.id, { expiry_date: newExpiry.toISOString() });
+        const result = await Store.updateUser(user.id, { 
+            expiry_date: newExpiry.toISOString(),
+            is_active: true,
+            status: 'active'
+        });
         if (result.success) {
             user.expiry_date = newExpiry.toISOString();
+            user.is_active = true;
+            user.status = 'active';
             this.closeEditExpiry();
             this.render();
         } else {
@@ -1382,16 +1388,20 @@ const App = {
                 const container = document.getElementById('v3-modals-container');
                 if (!container) return resolve(null);
                 
-                container.innerHTML = UI.dialog(options);
-                const overlay = container.querySelector('#custom-dialog-overlay');
-                const confirmBtn = container.querySelector('#dialog-confirm-btn');
-                const cancelBtn = container.querySelector('#dialog-cancel-btn');
-                const input = container.querySelector('#dialog-prompt-field');
+                const dialogDiv = document.createElement('div');
+                dialogDiv.innerHTML = UI.dialog(options);
+                const element = dialogDiv.firstElementChild;
+                container.appendChild(element);
+                
+                const overlay = element;
+                const confirmBtn = element.querySelector('#dialog-confirm-btn');
+                const cancelBtn = element.querySelector('#dialog-cancel-btn');
+                const input = element.querySelector('#dialog-prompt-field');
                 
                 const close = (value) => {
                     overlay.classList.remove('md-dialog-overlay--active');
                     setTimeout(() => {
-                        container.innerHTML = '';
+                        element.remove();
                         resolve(value);
                     }, 400); 
                 };

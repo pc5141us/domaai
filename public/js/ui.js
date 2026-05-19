@@ -496,7 +496,7 @@ const UI = {
                 <div>${c.duration}</div>
                 <div style="font-size: 13px; color: var(--on-surface-variant);">${c.type === 'hours' ? 'ساعة' : 'يوم'}</div>
                 <div style="display: flex; justify-content: center;">
-                    <button class="btn-glass" style="width: 32px; height: 32px; padding: 0; color: var(--error);" onclick="App.handleDeleteCoupon(${c.id})">
+                    <button class="btn-glass" style="width: 32px; height: 32px; padding: 0; color: var(--error);" onclick="App.handleDeleteCoupon('${c.id}')">
                         <span class="material-icons" style="font-size: 18px;">delete</span>
                     </button>
                 </div>
@@ -662,7 +662,7 @@ const UI = {
 
         <div id="edit-expiry-dialog" class="md-dialog-overlay">
             <div class="md-dialog glass-panel" style="max-width: 450px; width: 90%; padding: 32px;">
-                <h2 class="m3-headline-large">تعديل المدة</h2>
+                <h2 class="m3-headline-large">تعديل مدة: <span id="v3-edit-expiry-name" style="color: var(--primary);"></span></h2>
                 <div class="input-field">
                     <select id="v3-edit-expiry-duration" style="width: 100%; height: 56px; background: rgba(0,0,0,0.2); color: white;">
                         <option value="1d">يوم</option><option value="1m">شهر</option><option value="6m">٦ أشهر</option><option value="1y">سنة</option>
@@ -671,6 +671,17 @@ const UI = {
                 <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
                     <button class="btn btn-glass" onclick="App.closeEditExpiry()">إلغاء</button>
                     <button class="btn btn-primary" onclick="App.confirmEditExpiry()">تحديث</button>
+                </div>
+            </div>
+        <div id="change-password-dialog" class="md-dialog-overlay">
+            <div class="md-dialog glass-panel" style="max-width: 450px; width: 90%; padding: 32px;">
+                <h2 class="m3-headline-large">تغيير كلمة مرور: <span id="v3-change-pass-name" style="color: var(--primary);"></span></h2>
+                <div class="input-field">
+                    <input type="text" id="v3-new-password" placeholder="كلمة المرور الجديدة" style="width: 100%; height: 56px; background: rgba(0,0,0,0.2); color: white; padding: 0 16px; border-radius: 8px; border: 1px solid var(--glass-border);">
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+                    <button class="btn btn-glass" onclick="App.closeChangePassword()">إلغاء</button>
+                    <button class="btn btn-primary" onclick="App.confirmChangePassword()">حفظ</button>
                 </div>
             </div>
         </div>
