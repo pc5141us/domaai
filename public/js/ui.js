@@ -673,6 +673,8 @@ const UI = {
                     <button class="btn btn-primary" onclick="App.confirmEditExpiry()">تحديث</button>
                 </div>
             </div>
+        </div>
+
         <div id="change-password-dialog" class="md-dialog-overlay">
             <div class="md-dialog glass-panel" style="max-width: 450px; width: 90%; padding: 32px;">
                 <h2 class="m3-headline-large">تغيير كلمة مرور: <span id="v3-change-pass-name" style="color: var(--primary);"></span></h2>

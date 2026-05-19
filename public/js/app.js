@@ -830,6 +830,9 @@ const App = {
     closeAddCoupon() { document.getElementById('add-coupon-dialog').classList.remove('md-dialog-overlay--active'); },
 
     async confirmAddCoupon() {
+        const btn = document.querySelector('#add-coupon-dialog .btn-primary');
+        if (btn) { btn.disabled = true; btn.innerText = 'جاري التوليد...'; }
+
         let code = document.getElementById('v3-coupon-code').value.toUpperCase();
         const durationValue = document.getElementById('v3-coupon-duration').value;
 
@@ -862,6 +865,7 @@ const App = {
         await Store.addCoupon(code, finalDuration, finalType);
         this.closeAddCoupon();
         this.render();
+        if (btn) { btn.disabled = false; btn.innerText = 'توليد الكود'; }
     },
 
     async handleDeleteCoupon(id) {
@@ -869,6 +873,9 @@ const App = {
     },
 
     async confirmAddLesson() {
+        const btn = document.querySelector('#add-lesson-dialog .btn-primary');
+        if (btn) { btn.disabled = true; btn.innerText = 'جاري الإضافة...'; }
+
         const t = document.getElementById('v3-title').value;
         const u = document.getElementById('v3-url').value;
         const d = document.getElementById('v3-desc') ? document.getElementById('v3-desc').value : '';
@@ -885,6 +892,7 @@ const App = {
         } else {
             alert('يرجى ملء العنوان والرابط');
         }
+        if (btn) { btn.disabled = false; btn.innerText = 'إضافة'; }
     },
 
     showEditLesson(id) {
@@ -899,6 +907,9 @@ const App = {
     },
     closeEditLesson() { document.getElementById('edit-lesson-dialog').classList.remove('md-dialog-overlay--active'); },
     async confirmEditLesson() {
+        const btn = document.querySelector('#edit-lesson-dialog .btn-primary');
+        if (btn) { btn.disabled = true; btn.innerText = 'جاري الحفظ...'; }
+
         const id = document.getElementById('v3-edit-id').value;
         const t = document.getElementById('v3-edit-title').value;
         const u = document.getElementById('v3-edit-url').value;
@@ -910,6 +921,7 @@ const App = {
                 this.render();
             }
         }
+        if (btn) { btn.disabled = false; btn.innerText = 'حفظ'; }
     },
 
     async deleteLesson(id) {
@@ -928,6 +940,9 @@ const App = {
     },
     closeAddStudent() { document.getElementById('add-student-dialog').classList.remove('md-dialog-overlay--active'); },
     async confirmAddStudent() {
+        const btn = document.querySelector('#add-student-dialog .btn-primary');
+        if (btn) { btn.disabled = true; btn.innerText = 'جاري الإنشاء...'; }
+
         const u = document.getElementById('v3-student-user').value;
         const p = document.getElementById('v3-student-pass').value;
         const d = document.getElementById('v3-student-duration').value;
@@ -938,6 +953,7 @@ const App = {
                 this.render();
             } else alert(res.msg);
         }
+        if (btn) { btn.disabled = false; btn.innerText = 'إنشاء'; }
     },
     async deleteUser(username) {
         this.showConfirmDelete('user', username, `هل تريد حذف الطالب ${username} نهائياً؟`);
@@ -956,11 +972,17 @@ const App = {
         this.currentEditUsername = null;
     },
     async confirmEditExpiry() {
+        const btn = document.querySelector('#edit-expiry-dialog .btn-primary');
+        if (btn) { btn.disabled = true; btn.innerText = 'جاري التحديث...'; }
+
         const username = this.currentEditUsername;
         const duration = document.getElementById('v3-edit-expiry-duration').value;
         const user = Store.state.users.find(u => u.username === username);
 
-        if (!user || !username) return;
+        if (!user || !username) {
+            if (btn) { btn.disabled = false; btn.innerText = 'تحديث'; }
+            return;
+        }
 
         let newExpiry;
         if (duration === 'reset') {
@@ -990,6 +1012,7 @@ const App = {
         } else {
             alert('فشل تحديث تاريخ الانتهاء');
         }
+        if (btn) { btn.disabled = false; btn.innerText = 'تحديث'; }
     },
 
     // Change Password Logic
@@ -1004,11 +1027,15 @@ const App = {
         this.currentChangePassUser = null;
     },
     async confirmChangePassword() {
+        const btn = document.querySelector('#change-password-dialog .btn-primary');
+        if (btn) { btn.disabled = true; btn.innerText = 'جاري الحفظ...'; }
+
         const username = this.currentChangePassUser;
         const newPass = document.getElementById('v3-new-password').value;
 
         if (!username || !newPass) {
             alert('يرجى إدخال كلمة المرور الجديدة');
+            if (btn) { btn.disabled = false; btn.innerText = 'حفظ'; }
             return;
         }
 
@@ -1023,6 +1050,7 @@ const App = {
                 alert('❌ فشل تغيير كلمة المرور');
             }
         }
+        if (btn) { btn.disabled = false; btn.innerText = 'حفظ'; }
     },
 
     async handleSaveAnnouncement() {
@@ -1363,23 +1391,34 @@ const App = {
     async executeDelete() {
         if (!this.currentDelete) return;
 
-        const { type, id } = this.currentDelete;
-        this.closeConfirmDelete();
+        const btn = document.querySelector('#confirm-delete-dialog .btn-primary');
+        if (btn) { btn.disabled = true; btn.innerText = 'جاري الحذف...'; }
 
+        const { type, id } = this.currentDelete;
+        
+        // Let's close dialog after we're done or optimistic
         if (type === 'coupon') {
             await Store.deleteCoupon(id);
+            this.closeConfirmDelete();
             this.render();
         } else if (type === 'lesson') {
             const result = await DB.deleteLesson(id);
             if (result.success) {
                 Store.state.lessons = Store.state.lessons.filter(l => String(l.id) !== String(id));
+                this.closeConfirmDelete();
                 this.render();
             }
         } else if (type === 'user') {
             const res = await Store.deleteUser(id);
-            if (res.success) this.render();
-            else alert(res.msg);
+            if (res.success) {
+                this.closeConfirmDelete();
+                this.render();
+            } else {
+                alert(res.msg);
+                this.closeConfirmDelete();
+            }
         }
+        if (btn) { btn.disabled = false; btn.innerText = 'حذف'; }
     },
     // Custom Dialog System
     dialog: {
