@@ -728,42 +728,61 @@ const Store = {
             reader.onload = async (e) => {
                 try {
                     const data = JSON.parse(e.target.result);
-                    // Minimal validation
-                    if (data.users && data.lessons) {
-                        // Call DB.restoreData to restore on Google Sheets
-                        const res = await DB.restoreData({
-                            users: data.users || [],
-                            lessons: data.lessons || [],
-                            coupons: data.coupons || [],
-                            announcement: data.announcement || null
-                        });
-                        
-                        if (res && res.success) {
-                            // Update local state
-                            this.state.users = (data.users || []).filter(u => u.username !== 'ANNOUNCEMENT_DATA').sort((a, b) => (b.id || 0) - (a.id || 0));
-                            this.state.lessons = (data.lessons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
-                            this.state.coupons = (data.coupons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
-                            if (data.announcement) this.state.announcement = data.announcement;
-                            
-                            // Save to local cache
-                            localStorage.setItem('v3_data_cache', JSON.stringify({
-                                users: this.state.users,
-                                lessons: this.state.lessons,
-                                coupons: this.state.coupons,
-                                announcement: this.state.announcement,
-                                ts: Date.now()
-                            }));
-                            
-                            resolve({ success: true, msg: 'تم استعادة النسخة الاحتياطية وتحديث قاعدة البيانات بنجاح!' });
-                        } else {
-                            reject({ success: false, msg: 'فشل رفع البيانات إلى Google Sheets' });
-                        }
-                    } else {
-                        reject({ success: false, msg: 'ملف غير متوافق أو لا يحتوي على هيكل البيانات الصحيح' });
+                    if (!data.users && !data.lessons) {
+                        return reject({ success: false, msg: 'ملف غير متوافق أو لا يحتوي على هيكل البيانات الصحيح' });
                     }
+
+                    // Process individually to avoid Google Apps Script GET 2KB limit
+                    const total = (data.users?.length || 0) + (data.lessons?.length || 0) + (data.coupons?.length || 0);
+                    let done = 0;
+
+                    // Announcement
+                    if (data.announcement) {
+                        await this.updateAnnouncement(data.announcement);
+                    }
+
+                    // Users
+                    if (data.users) {
+                        for (const u of data.users) {
+                            if (u.username !== 'ANNOUNCEMENT_DATA') await DB.addUser(u);
+                            done++;
+                        }
+                    }
+
+                    // Lessons
+                    if (data.lessons) {
+                        for (const l of data.lessons) {
+                            await DB.addLesson(l);
+                            done++;
+                        }
+                    }
+
+                    // Coupons
+                    if (data.coupons) {
+                        for (const c of data.coupons) {
+                            await DB.addCoupon(c);
+                            done++;
+                        }
+                    }
+
+                    // Update local state completely from the file for immediate view
+                    this.state.users = (data.users || []).filter(u => u.username !== 'ANNOUNCEMENT_DATA').sort((a, b) => (b.id || 0) - (a.id || 0));
+                    this.state.lessons = (data.lessons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
+                    this.state.coupons = (data.coupons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
+                    if (data.announcement) this.state.announcement = data.announcement;
+
+                    localStorage.setItem('v3_data_cache', JSON.stringify({
+                        users: this.state.users,
+                        lessons: this.state.lessons,
+                        coupons: this.state.coupons,
+                        announcement: this.state.announcement,
+                        ts: Date.now()
+                    }));
+
+                    resolve({ success: true, msg: 'تم استعادة النسخة الاحتياطية وتحديث قاعدة البيانات بنجاح!' });
                 } catch (err) {
                     console.error('Import Error:', err);
-                    reject({ success: false, msg: 'خطأ في قراءة وتحليل ملف الجيسون' });
+                    reject({ success: false, msg: 'خطأ أثناء رفع ومزامنة البيانات.' });
                 }
             };
             reader.readAsText(file);
