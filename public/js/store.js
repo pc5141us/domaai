@@ -733,12 +733,22 @@ const Store = {
                     }
 
                     // Process individually to avoid Google Apps Script GET 2KB limit
-                    const total = (data.users?.length || 0) + (data.lessons?.length || 0) + (data.coupons?.length || 0);
                     let done = 0;
 
                     // Announcement
                     if (data.announcement) {
                         await this.updateAnnouncement(data.announcement);
+                    }
+
+                    // Clear existing data to prevent duplicates
+                    for (const u of this.state.users) {
+                        if (u.username !== 'admin') await DB.deleteUser(u.id);
+                    }
+                    for (const l of this.state.lessons) {
+                        await DB.deleteLesson(l.id);
+                    }
+                    for (const c of this.state.coupons) {
+                        await DB.deleteCoupon(c.id);
                     }
 
                     // Users

@@ -39,12 +39,11 @@ const DB = {
     },
 
     async addLesson(lesson) {
-        const { id, ...lessonData } = lesson;
         try {
             const res = await fetch(API_URL + '/api/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'add', table: 'lessons', payload: lessonData })
+                body: JSON.stringify({ action: 'add', table: 'lessons', payload: lesson })
             });
             const result = await res.json();
             if (result.success) {
@@ -58,12 +57,11 @@ const DB = {
     },
 
     async addUser(user) {
-        const { id, ...userData } = user;
         try {
             const res = await fetch(API_URL + '/api/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'add', table: 'users', payload: userData })
+                body: JSON.stringify({ action: 'add', table: 'users', payload: user })
             });
             const result = await res.json();
             if (result.success) {
@@ -77,12 +75,11 @@ const DB = {
     },
 
     async addCoupon(coupon) {
-        const { id, ...couponData } = coupon;
         try {
             const res = await fetch(API_URL + '/api/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'add', table: 'coupons', payload: couponData })
+                body: JSON.stringify({ action: 'add', table: 'coupons', payload: coupon })
             });
             const result = await res.json();
             if (result.success) {
