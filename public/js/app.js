@@ -1068,15 +1068,18 @@ const App = {
         const btn = document.querySelector('button[onclick="App.handleSaveAnnouncement()"]');
         if (btn) { btn.disabled = true; btn.innerText = 'جاري الحفظ...'; }
 
-        const result = await Store.updateAnnouncement(announceObj);
+        // Optimistic UI Update
+        Store.state.announcement = announceObj;
+        this.render();
+        this.showToast('جاري حفظ الإعلان في النظام...', 'sync');
 
-        if (result.success) {
-            alert('✅ تم حفظ الإعلان بنجاح وسيظهر لجميع الطلاب');
-            this.render();
-        } else {
-            alert('❌ فشل حفظ الإعلان: ' + (result.error?.message || 'خطأ غير معروف'));
-            if (btn) { btn.disabled = false; btn.innerText = 'حفظ الإعلان'; }
-        }
+        Store.updateAnnouncement(announceObj).then(result => {
+            if (result.success) {
+                this.showToast('✅ تم حفظ الإعلان بنجاح وسيظهر للجميع', 'check_circle');
+            } else {
+                alert('❌ فشل حفظ الإعلان: ' + (result.error?.message || 'خطأ غير معروف'));
+            }
+        });
     },
 
     async handleBroadcastToBot(btn) {
@@ -1084,7 +1087,7 @@ const App = {
             const input = document.getElementById('v3-announcement-input');
             if (!input || !input.value.trim()) return alert('⚠️ يرجى كتابة نص الإعلان أولاً');
             
-            if (!confirm('هل تريد إذاعة هذا الإعلان لجميع المشتركين؟')) return;
+            if (!(await confirm('هل تريد إذاعة هذا الإعلان لجميع المشتركين؟'))) return;
             
             if (btn) btn.disabled = true;
             
@@ -1132,20 +1135,23 @@ const App = {
 
     async handleClearAnnouncement(btn) {
         try {
-            if (!confirm('هل تريد حذف الإعلان الحالي؟')) return;
+            if (!(await confirm('هل تريد حذف الإعلان الحالي؟'))) return;
             if (btn) btn.disabled = true;
             
-            const result = await Store.updateAnnouncement({ text: '', buttonText: '', buttonUrl: '' });
-            if (result.success) {
-                alert('✅ تم حذف الإعلان');
-                this.render();
-            } else {
-                alert('❌ فشل الحذف');
-            }
+            // Optimistic UI Update
+            Store.state.announcement = { text: '', buttonText: '', buttonUrl: '' };
+            this.render();
+            this.showToast('جاري إزالة الإعلان...', 'sync');
+
+            Store.updateAnnouncement({ text: '', buttonText: '', buttonUrl: '' }).then(result => {
+                if (result.success) {
+                    this.showToast('✅ تم حذف الإعلان', 'delete');
+                } else {
+                    alert('❌ فشل الحذف');
+                }
+            });
         } catch (e) {
             alert('❌ حدث خطأ');
-        } finally {
-            if (btn) btn.disabled = false;
         }
     },
 
