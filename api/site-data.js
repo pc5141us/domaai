@@ -1,5 +1,5 @@
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyZ6Cdjn2WPM82EOrEZGUPrLXtE9Mt6UrfxrZPQngCiRB-4I6ewgsW7cRBxOONeugcv/exec';
+const SCRIPT_URL = process.env.APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbyRRnfsdggfhQQF0bEKZc8BUwi2fzFxUIozZ7HeEzKU49KSsfFmfN02sLCLKOeV9s7S/exec';
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');

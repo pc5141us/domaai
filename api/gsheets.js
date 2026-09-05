@@ -2,7 +2,7 @@
  * Doma AI - Google Sheets API Layer (via Apps Script Web App)
  */
 
-const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzZA8foEVn5-ltu4nPvJbXl-I2TIeT-ZW4QjCYaeSeIDUvGv-TXACcFdAOb2YYHfXUi/exec';
+const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbyRRnfsdggfhQQF0bEKZc8BUwi2fzFxUIozZ7HeEzKU49KSsfFmfN02sLCLKOeV9s7S/exec';
 
 export async function appsGet(params) {
     const url = new URL(APPS_SCRIPT_URL);

@@ -13,7 +13,7 @@ export default async function handler(req, res) {
         });
 
         // Test 3: Get the raw URL being called
-        const testUrl = new URL(process.env.APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzZA8foEVn5-ltu4nPvJbXl-I2TIeT-ZW4QjCYaeSeIDUvGv-TXACcFdAOb2YYHfXUi/exec');
+        const testUrl = new URL(process.env.APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbyRRnfsdggfhQQF0bEKZc8BUwi2fzFxUIozZ7HeEzKU49KSsfFmfN02sLCLKOeV9s7S/exec');
         testUrl.searchParams.set('payload', JSON.stringify({ action: 'add', table: 'lessons', payload: { title: 'T', url: 'U' } }));
 
         return res.status(200).json({

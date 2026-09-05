@@ -3,7 +3,7 @@
   "name": "doma-ai-platform",
   "cleanUrls": true,
   "env": {
-    "APPS_SCRIPT_URL": "https://script.google.com/macros/s/AKfycbzZA8foEVn5-ltu4nPvJbXl-I2TIeT-ZW4QjCYaeSeIDUvGv-TXACcFdAOb2YYHfXUi/exec"
+    "APPS_SCRIPT_URL": "https://script.google.com/macros/s/AKfycbyRRnfsdggfhQQF0bEKZc8BUwi2fzFxUIozZ7HeEzKU49KSsfFmfN02sLCLKOeV9s7S/exec"
   },
   "rewrites": [
     {
