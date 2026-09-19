@@ -575,32 +575,60 @@ const App = {
     },
 
     async handleRegister() {
-        const u = document.getElementById('reg-username').value.trim().toLowerCase();
-        const p = document.getElementById('reg-password').value.trim().toLowerCase();
+        const uEl = document.getElementById('reg-username');
+        const pEl = document.getElementById('reg-password');
+        const btn = document.querySelector('#register-view button.btn-primary') || document.querySelector('button[onclick*="handleRegister"]');
+
+        if (!uEl || !pEl) return;
+        const u = uEl.value.trim().toLowerCase();
+        const p = pEl.value.trim().toLowerCase();
 
         if (!u || !p) return alert("❌ يرجى ملء كافة الحقول.");
         if (/[^\u0000-\u007F]/.test(u) || /[^\u0000-\u007F]/.test(p)) {
             return alert("❌ غير مسموح باستخدام اللغة العربية؛ يرجى استخدام أحرف وأرقام إنجليزية فقط.");
         }
 
-        const res = await Store.register(u, p);
-        if (res.success) {
-            sessionStorage.setItem('temp_username', u);
-            sessionStorage.setItem('temp_password', p);
+        if (this._isRegisteringUI) return;
+        this._isRegisteringUI = true;
 
-            // Telegram Notification with Inline Selection Button
-            this.telegram.sendMessage(`🔔 <b>طالب جديد سجل في المنصة!</b>\n👤 الاسم: <code>${u}</code>\n🔑 الباسورد: <code>${p}</code>\n\nيرجى التفعيل بالضغط أدناه والمدة المطلوبة:`, null, [
-                [{ text: '✅ تفعيل الطالب (اختر المدة)', callback_data: `choose_act:${u}` }]
-            ]);
+        let origText = '';
+        if (btn) {
+            btn.disabled = true;
+            origText = btn.innerHTML;
+            btn.innerHTML = 'جاري التسجيل... ⏳';
+        }
 
-            // Auto-login the user
-            const loginRes = await Store.login(u, p);
-            if (loginRes.success) {
-                this.navigate('dashboard', null, false, true);
+        try {
+            const res = await Store.register(u, p);
+            if (res.success) {
+                sessionStorage.setItem('temp_username', u);
+                sessionStorage.setItem('temp_password', p);
+
+                // Telegram Notification with Inline Selection Button
+                this.telegram.sendMessage(`🔔 <b>طالب جديد سجل في المنصة!</b>\n👤 الاسم: <code>${u}</code>\n🔑 الباسورد: <code>${p}</code>\n\nيرجى التفعيل بالضغط أدناه والمدة المطلوبة:`, null, [
+                    [{ text: '✅ تفعيل الطالب (اختر المدة)', callback_data: `choose_act:${u}` }]
+                ]);
+
+                // Auto-login the user
+                const loginRes = await Store.login(u, p);
+                if (loginRes.success) {
+                    this.navigate('dashboard', null, false, true);
+                } else {
+                    this.navigate('login');
+                }
             } else {
-                this.navigate('login');
+                this.showToast(res.message || 'فشل التسجيل', 'error');
             }
-        } else this.showToast(res.message || 'فشل التسجيل', 'error');
+        } catch (e) {
+            console.error('Registration UI error:', e);
+            this.showToast('حدث خطأ أثناء التسجيل', 'error');
+        } finally {
+            this._isRegisteringUI = false;
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origText || 'انضم إلينا الآن';
+            }
+        }
     },
 
     async handleLogout() {

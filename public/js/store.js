@@ -79,7 +79,7 @@ const Store = {
             const data = await DB.getData();
 
             if (data) {
-                this.state.users = (data.users || []).filter(u => u.username !== 'ANNOUNCEMENT_DATA').sort((a, b) => (b.id || 0) - (a.id || 0));
+                this.state.users = this.deduplicateUsers((data.users || []).filter(u => u.username !== 'ANNOUNCEMENT_DATA').sort((a, b) => (b.id || 0) - (a.id || 0)));
                 this.state.lessons = (data.lessons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
                 this.state.coupons = (data.coupons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
                 if (data.announcement) this.state.announcement = data.announcement;
@@ -243,7 +243,7 @@ const Store = {
             const data = await DB.getData();
             if (data) {
                 // Filter out system rows
-                const newUsers = (data.users || []).filter(u => u.username !== 'ANNOUNCEMENT_DATA').sort((a, b) => (b.id || 0) - (a.id || 0));
+                const newUsers = this.deduplicateUsers((data.users || []).filter(u => u.username !== 'ANNOUNCEMENT_DATA').sort((a, b) => (b.id || 0) - (a.id || 0)));
                 const newLessons = (data.lessons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
                 const newCoupons = (data.coupons || []).sort((a, b) => (b.id || 0) - (a.id || 0));
 
@@ -311,31 +311,61 @@ const Store = {
     // Note: save() method removed - we now use direct DB calls (addLesson, updateLesson, etc.)
 
 
+    deduplicateUsers(users) {
+        if (!Array.isArray(users)) return [];
+        const unique = [];
+        const seen = new Set();
+        for (const u of users) {
+            if (!u || !u.username) continue;
+            const key = String(u.username).trim().toLowerCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                unique.push(u);
+            }
+        }
+        return unique;
+    },
+
     // User Actions
     async register(username, password) {
         const uname = username.trim().toLowerCase();
-        if (this.state.users.find(u => u.username && String(u.username).trim().toLowerCase() === uname)) {
-            return { success: false, message: 'اسم المستخدم موجود بالفعل' };
+        if (this._registeringLock) {
+            return { success: false, message: 'جاري تسجيل حسابك بالفعل، يرجى الانتظار...' };
         }
+        this._registeringLock = true;
 
-        const newUser = {
-            id: Date.now(),
-            username: uname,
-            password,
-            role: 'student',
-            is_active: false,
-            status: 'pending',
-            expiry_date: null
-        };
+        try {
+            // Deduplicate state first
+            this.state.users = this.deduplicateUsers(this.state.users);
 
-        // Save to Supabase
-        const result = await DB.addUser(newUser);
-        if (result.success) {
-            // Add to local state with Supabase ID (at the top)
-            this.state.users.unshift(result.data);
-            return { success: true, data: result.data };
-        } else {
-            return { success: false, message: 'فشل التسجيل. حاول مرة أخرى.' };
+            if (this.state.users.some(u => u.username && String(u.username).trim().toLowerCase() === uname)) {
+                return { success: false, message: 'اسم المستخدم موجود بالفعل' };
+            }
+
+            const newUser = {
+                id: Date.now(),
+                username: uname,
+                password,
+                role: 'student',
+                is_active: false,
+                status: 'pending',
+                expiry_date: null
+            };
+
+            // Save to DB
+            const result = await DB.addUser(newUser);
+            if (result.success) {
+                const addedUser = result.data || newUser;
+                // Add to local state only if not already present
+                if (!this.state.users.some(u => u.username && String(u.username).trim().toLowerCase() === uname)) {
+                    this.state.users.unshift(addedUser);
+                }
+                return { success: true, data: addedUser };
+            } else {
+                return { success: false, message: result.error || 'فشل التسجيل. حاول مرة أخرى.' };
+            }
+        } finally {
+            this._registeringLock = false;
         }
     },
 
@@ -601,7 +631,12 @@ const Store = {
     },
 
     async addUser(username, password, duration) {
-        if (this.state.users.find(u => u.username === username)) return { success: false, msg: 'المستخدم موجود' };
+        const uname = String(username).trim().toLowerCase();
+        this.state.users = this.deduplicateUsers(this.state.users);
+
+        if (this.state.users.some(u => u.username && String(u.username).trim().toLowerCase() === uname)) {
+            return { success: false, msg: 'اسم المستخدم موجود بالفعل' };
+        }
 
         let ms = 0;
         switch (duration) {
@@ -624,7 +659,10 @@ const Store = {
 
         const result = await DB.addUser(newUser);
         if (result.success) {
-            this.state.users.unshift(result.data);
+            const added = result.data || newUser;
+            if (!this.state.users.some(u => u.username && String(u.username).trim().toLowerCase() === uname)) {
+                this.state.users.unshift(added);
+            }
         }
         return result;
     },

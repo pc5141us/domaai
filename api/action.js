@@ -24,6 +24,12 @@ export default async function handler(req, res) {
                 return res.status(200).json({ success: successRestore.success });
 
             case 'add':
+                if (table === 'users' && payload && payload.username) {
+                    const existing = await getRecordByField('users', 'username', String(payload.username).trim().toLowerCase());
+                    if (existing && existing.username) {
+                        return res.status(200).json({ success: false, error: 'اسم المستخدم موجود بالفعل' });
+                    }
+                }
                 result = await addRecord(table, payload);
                 return res.status(200).json({ success: true, data: result });
 
