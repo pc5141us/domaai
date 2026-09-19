@@ -1,5 +1,7 @@
+import { getBotToken } from './bot-config.js';
+
 export default async function handler(req, res) {
-    const BOT_TOKEN = '8598472216:AAE7gQmUpaWPeEgq7ZFlnTGuzedGUAQfFoU';
+    const BOT_TOKEN = getBotToken();
     const host = req.headers.host;
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const webhookUrl = `${protocol}://${host}/api/webhook`;

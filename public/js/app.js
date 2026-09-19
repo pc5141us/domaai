@@ -11,15 +11,17 @@ const App = {
     sessionCheckCounter: 0, // Counter for session checks
 
     telegram: {
-        token: '8598472216:AAE7gQmUpaWPeEgq7ZFlnTGuzedGUAQfFoU',
         adminChatId: localStorage.getItem('v3_admin_chat_id') || '682572594',
         async sendMessage(text, keyboard, inline_keyboard) {
-            if (!this.token || !this.adminChatId) return;
             try {
-                const body = { chat_id: this.adminChatId, text: text, parse_mode: 'HTML' };
-                if (inline_keyboard) body.reply_markup = { inline_keyboard: inline_keyboard };
-                else if (keyboard) body.reply_markup = { keyboard: keyboard, resize_keyboard: true };
-                await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
+                const body = {
+                    action: 'notify_admin',
+                    chat_id: this.adminChatId,
+                    text: text,
+                    keyboard: keyboard,
+                    inline_keyboard: inline_keyboard
+                };
+                await fetch('/api/webhook', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
@@ -1104,28 +1106,8 @@ const App = {
                 return;
             }
 
-            let count = 0;
-            const token = "8598472216:AAE7gQmUpaWPeEgq7ZFlnTGuzedGUAQfFoU";
-            
-            for (const user of targets) {
-                try {
-                    const payload = {
-                        chat_id: user.telegram_id,
-                        text: `📢 <b>إعلان جديد من المنصة:</b>\n\n${message}`,
-                        parse_mode: 'HTML'
-                    };
-                    if (btnText && btnUrl) {
-                        payload.reply_markup = { inline_keyboard: [[{ text: btnText, url: btnUrl }]] };
-                    }
-                    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    if (res.ok) count++;
-                } catch (e) {}
-            }
-            alert(`✅ تمت الإذاعة بنجاح لـ (${count}) طلاب.`);
+            await Store.broadcastBot(`📢 <b>إعلان جديد من المنصة:</b>\n\n${message}`);
+            alert('✅ تم إرسال الإذاعة بنجاح إلى البوت.');
         } catch (e) {
             alert('❌ فشل الإرسال');
         } finally {

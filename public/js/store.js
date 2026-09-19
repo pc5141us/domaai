@@ -67,7 +67,6 @@ const Store = {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     action: 'broadcast',
-                    secret: '8598472216:AAE7gQmUpaWPeEgq7ZFlnTGuzedGUAQfFoU',
                     message: message
                 })
             });

@@ -2,10 +2,11 @@
  * Doma AI Bot - Vercel API Gateway (v2.9.6)
  */
 import { createClient } from './supabase-shim.js';
+import { getBotToken } from './bot-config.js';
 
 const supabase = createClient();
 
-const BOT_TOKEN = '8598472216:AAE7gQmUpaWPeEgq7ZFlnTGuzedGUAQfFoU';
+const getBOT_TOKEN = () => getBotToken();
 const SUPER_ADMIN = '682572594';
 const PERMISSIONS_MAP = {
     stats: 'إحصائيات المنصة',
@@ -90,7 +91,8 @@ async function clearState(cid) {
 
 async function tg(method, payload) {
     try {
-        const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+        const token = getBotToken();
+        const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -206,9 +208,27 @@ export default async function handler(req, res) {
     if (!body) return res.status(200).send('OK');
 
     // Handle incoming broadcast from Website
-    if (body.action === 'broadcast' && body.secret === BOT_TOKEN) {
+    if (body.action === 'broadcast') {
         const count = await broadcast(body.message);
         return res.status(200).json({ success: true, count });
+    }
+
+    // Handle incoming admin notification from Website
+    if (body.action === 'notify_admin') {
+        const token = getBotToken();
+        if (token) {
+            try {
+                const payload = { chat_id: body.chat_id || SUPER_ADMIN, text: body.text, parse_mode: 'HTML' };
+                if (body.inline_keyboard) payload.reply_markup = { inline_keyboard: body.inline_keyboard };
+                else if (body.keyboard) payload.reply_markup = { keyboard: body.keyboard, resize_keyboard: true };
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (e) { console.error('Telegram Admin Notify Error:', e); }
+        }
+        return res.status(200).json({ success: true });
     }
 
     try {

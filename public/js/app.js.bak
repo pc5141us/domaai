@@ -11,7 +11,7 @@ const App = {
     sessionCheckCounter: 0, // Counter for session checks
 
     telegram: {
-        token: '8598472216:AAE7gQmUpaWPeEgq7ZFlnTGuzedGUAQfFoU',
+        token: '',
         adminChatId: localStorage.getItem('v3_admin_chat_id') || '682572594',
         lastUpdateId: 0,
         isPolling: false,
