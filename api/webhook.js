@@ -23,10 +23,9 @@ let CACHED_ADMINS_PERMS = {}; // { ID: [perms] }
 let _botConfigCache = null;
 
 async function getBotConfig() {
-    // Return cached version if already fetched in this request
     if (_botConfigCache) return JSON.parse(JSON.stringify(_botConfigCache));
     try {
-        const { data } = await supabase.from('users').select('password').eq('username', 'DOMA_AI_BOT').single();
+        const { data } = await supabase.from('users').select('password').eq('username', 'DOMA_AI_BOT').maybeSingle();
         _botConfigCache = data && data.password ? JSON.parse(data.password) : { admins: {}, announcement: {}, all_users: [] };
     } catch (e) {
         _botConfigCache = { admins: {}, announcement: {}, all_users: [] };
@@ -37,8 +36,23 @@ async function getBotConfig() {
 async function saveBotConfig(config) {
     _botConfigCache = config; // Update in-memory cache immediately
     const jsonStr = JSON.stringify(config);
-    // Single API call: updateByField creates row if not exists, updates if found
-    await supabase.from('users').update({ password: jsonStr, role: 'system', status: 'active' }).eq('username', 'DOMA_AI_BOT');
+    try {
+        const { data: existing } = await supabase.from('users').select('id').eq('username', 'DOMA_AI_BOT').maybeSingle();
+        if (existing && existing.id) {
+            await supabase.from('users').update({ password: jsonStr, role: 'system', status: 'active', is_active: true }).eq('id', existing.id);
+        } else {
+            await supabase.from('users').insert([{
+                id: 'DOMA_AI_BOT',
+                username: 'DOMA_AI_BOT',
+                password: jsonStr,
+                role: 'system',
+                status: 'active',
+                is_active: true
+            }]);
+        }
+    } catch (e) {
+        console.error('Error saving bot config:', e);
+    }
 }
 
 
